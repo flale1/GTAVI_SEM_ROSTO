@@ -1,0 +1,44 @@
+From 23f1d3c579957c3b308d3e17489fe09653fba88b Mon Sep 17 00:00:00 2001
+From: "VItoriaBr CEO (local)" <ceo-local@localhost>
+Date: Thu, 26 Nov 2026 15:01:56 -0300
+Subject: [PATCH 9/9] host pipeline refusals name their stage and code size
+
+A refused host pipeline (0x80070057 is E_INVALIDARG) was logged with the
+shader hashes only. Now the compute refusal logs stage = "compute" and
+the code_bytes of the program, and the graphics refusal logs
+stage = "graphics" and whether the rectangle geometry stage was present.
+Log only; no change to what is made.
+
+Origin: our own, for the question of which title shaders the NVIDIA
+driver refuses (run logs name hashes, not stages or sizes).
+---
+ crates/victory-gpu/src/pipeline/host.rs | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/crates/victory-gpu/src/pipeline/host.rs b/crates/victory-gpu/src/pipeline/host.rs
+index f1de86c..c6aee51 100644
+--- a/crates/victory-gpu/src/pipeline/host.rs
++++ b/crates/victory-gpu/src/pipeline/host.rs
+@@ -625,7 +625,8 @@ impl HostPipeline {
+             let pso = match made {
+                 Ok(pso) => pso,
+                 Err(e) => {
+-                    tracing::warn!(error = %e, ?shaders, "host pipeline refused");
++                    // The stage and the byte size name which program the host took (0x80070057 is E_INVALIDARG).
++                    tracing::warn!(error = %e, ?shaders, stage = "compute", code_bytes = code_bytes(&code(0)).len(), "host pipeline refused");
+                     host.log_messages();
+                     return None;
+                 }
+@@ -784,7 +785,8 @@ impl HostPipeline {
+         let pso = match made {
+             Ok(pso) => pso,
+             Err(e) => {
+-                tracing::warn!(error = %e, ?shaders, "host pipeline refused");
++                // The stage names which program the host took (0x80070057 is E_INVALIDARG).
++                tracing::warn!(error = %e, ?shaders, stage = "graphics", rect_geometry = rect_gs.is_some(), "host pipeline refused");
+                 host.log_messages();
+                 return None;
+             }
+-- 
+2.55.0.windows.5
+

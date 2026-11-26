@@ -1,0 +1,41 @@
+VIctory: Series S com pouca RAM (build local, 26/11/2026)
+
+Esta pasta NÃO contém arquivos do jogo. Você precisa do seu próprio dump.
+
+Como rodar
+1. Instale o Microsoft Visual C++ Redistributable x64 (2015-2022). O victory.exe usa vcruntime140.dll e msvcp140.dll.
+2. Jeito mais fácil: extraia esta pasta dentro da pasta do seu dump (ao lado do game_scarlett_master.exe) e dê dois cliques no Play-VIctory.cmd. Ele acha o jogo sozinho.
+   No PowerShell (o terminal azul), dentro da pasta VIctory-SeriesS-LowRAM:
+     .\Play-VIctory.cmd
+   Com a pasta em outro lugar, no PowerShell:
+     $env:VICTORY_GAME_DIR = 'D:\Jogos\MeuDump'
+     .\Play-VIctory.cmd
+   Ou deixe a pasta em qualquer lugar, abra o Prompt de Comando (cmd, terminal preto) nela e rode:
+     set VICTORY_GAME_DIR=D:\Jogos\MeuDump
+     Play-VIctory.cmd
+   VICTORY_GAME_DIR é a pasta do seu dump, a que tem game_scarlett_master.exe.
+   Placa com 12-16 GB de VRAM: antes de rodar, no PowerShell, dá para subir a resolução:
+     $env:VICTORY_RENDER_SCALE = '0.75'; $env:VICTORY_CARD_BUFFERS_MB = '2048'
+   Deu bug? Rode o diagnóstico, que grava log completo e memória e gera um zip para enviar:
+     powershell -ExecutionPolicy Bypass -File .\Diagnostico.ps1
+3. A primeira execução é lenta: os shaders são traduzidos e ficam em cache em %LOCALAPPDATA%\victory.
+
+Requisitos: Windows 10/11 x64, CPU com AVX2, placa Direct3D 12 com Shader Model 6.6 e mesh shaders. Testado numa RTX 4060 Ti de 8 GB com 24 GB de RAM: Series S, cerca de 5 fps no prólogo.
+
+O que tem de diferente
+- Base: avatarmanz/VIctory-7900XTX, commit 85d5641.
+- Series S em NVIDIA, com cherry-pick do trustno1-coder/VIctory-NVIDIA: 7997a20 (compor o plano da interface, sem isso a tela fica preta), a9632bc (slots de descritor) e afd84de (escala de render e upscaler próprio).
+- Modo de pouca RAM (VICTORY_LOW_RAM, liga sozinho com 24 GB ou menos; VICTORY_LOW_RAM=0 desliga):
+    - caches ociosos guardados por 15 s em vez de 5 a 10 min;
+    - janelas de 1 MiB (VICTORY_WINDOW_KB=4096 volta ao antigo);
+    - pool de snapshots com 128 MiB;
+    - sobra de rascunho com 128 MiB.
+- Rostos em NVIDIA: port do 77e13a9 do trustno1-coder/VIctory-NVIDIA (valores de 16 bits lidos por views inteiras; sem isso, cabeças podem sumir). A parte de cor de alvo (a35c557) ficou de fora.
+- O log agora diz o estágio e o tamanho de cada shader recusado pela placa.
+- Problemas conhecidos: interiores escuros sem ray tracing, imagem um pouco borrada (escala 0,5) e 5-8 fps.
+
+Licença: GPL-3.0-or-later, como o VIctory (ver LICENSE e asset-policy.md).
+Código-fonte deste build: pasta source\
+- o zip tem a árvore completa;
+- patches\ tem os 9 commits por cima do 85d5641.
+Créditos: Marvisak/VIctory e colaboradores, fxceless, avatarmanz, trustno1-coder, myokex, Belobug, uiliannn e demais forks citados no histórico.

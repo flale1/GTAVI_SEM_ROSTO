@@ -1,0 +1,43 @@
+From 01b81c1df9295a743db5c3565556e5129b4ff4d3 Mon Sep 17 00:00:00 2001
+From: "VItoriaBr CEO (local)" <ceo-local@localhost>
+Date: Thu, 26 Nov 2026 13:55:40 -0300
+Subject: [PATCH 7/9] low ram: scratch chunks keep 128 MiB under
+ VICTORY_LOW_RAM
+
+give_chunks() kept up to SPARE_KEPT (1 GiB) of scratch chunks while
+keep_freed() was on. With VICTORY_LOW_RAM on (crate::low_ram), the cap is
+SPARE_MOST (128 MiB), as with VICTORY_KEEP_FREED=0.
+
+Cost: lists take fresh chunks more often. Disable alone with
+VICTORY_KEEP_FREED=0 (which also changes the other keeps) or
+VICTORY_LOW_RAM=0.
+---
+ crates/victory-gpu/src/host.rs | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/crates/victory-gpu/src/host.rs b/crates/victory-gpu/src/host.rs
+index 820ce2e..61d7077 100644
+--- a/crates/victory-gpu/src/host.rs
++++ b/crates/victory-gpu/src/host.rs
+@@ -1863,7 +1863,8 @@ const SCRATCH_CHUNK: u64 = 4 << 20;
+ const SCRATCH_FIRST: u64 = 256 << 10;
+ /// The most bytes of chunks kept while no list holds them.
+ const SPARE_MOST: u64 = 128 << 20;
+-/// The same with [`keep_freed`].
++/// The same with [`keep_freed`], except with `VICTORY_LOW_RAM` on
++/// ([`crate::low_ram`]): then [`SPARE_MOST`] too.
+ const SPARE_KEPT: u64 = 1 << 30;
+ 
+ /// Whether lists share their scratch chunks: a list takes a chunk when it
+@@ -1945,7 +1946,7 @@ fn give_chunks(chunks: Vec<(Chunk, u64)>) {
+         let mut spare = SPARE.lock().unwrap_or_else(|e| e.into_inner());
+         for (chunk, size) in chunks {
+             let back = if scratch_pool() {
+-                spare.give(chunk, size, if keep_freed() { SPARE_KEPT } else { SPARE_MOST })
++                spare.give(chunk, size, if keep_freed() && !crate::low_ram::low_ram() { SPARE_KEPT } else { SPARE_MOST })
+             } else {
+                 Some(chunk)
+             };
+-- 
+2.55.0.windows.5
+

@@ -1,0 +1,42 @@
+From 071580f2a0260aee69e9dbaaac769219dd89f111 Mon Sep 17 00:00:00 2001
+From: "VItoriaBr CEO (local)" <ceo-local@localhost>
+Date: Thu, 26 Nov 2026 13:54:54 -0300
+Subject: [PATCH 6/9] low ram: snapshot pool keeps 128 MiB under
+ VICTORY_LOW_RAM
+
+give_back() (shadow.rs) kept up to 512 MiB of returned snapshot buffers
+(the largest first, up to the count of VICTORY_SNAPSHOT_POOL). With
+VICTORY_LOW_RAM on (crate::low_ram), the byte cap is 128 MiB. The count
+cap is unchanged.
+
+Cost: more snapshots taken fresh from the kernel (the CPU cost named in
+the snapshots_kept doc). Disable alone with VICTORY_LOW_RAM=0.
+---
+ crates/victory-gpu/src/shadow.rs | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/crates/victory-gpu/src/shadow.rs b/crates/victory-gpu/src/shadow.rs
+index 0d5de16..9fed0d0 100644
+--- a/crates/victory-gpu/src/shadow.rs
++++ b/crates/victory-gpu/src/shadow.rs
+@@ -1292,14 +1292,15 @@ fn snapshots_kept() -> usize {
+ /// the largest, and of those the largest one and the next ones up to `KEPT`
+ /// bytes in all.
+ fn give_back(v: Vec<u8>) {
+-    const KEPT: usize = 512 << 20;
++    // 128 MiB with VICTORY_LOW_RAM on (crate::low_ram), 512 MiB otherwise.
++    let kept_bytes: usize = if crate::low_ram::low_ram() { 128 << 20 } else { 512 << 20 };
+     let mut pool = POOL.lock().unwrap_or_else(|e| e.into_inner());
+     pool.push(v);
+     pool.sort_by_key(|v| std::cmp::Reverse(v.capacity()));
+     let (mut kept, mut total) = (0, 0usize);
+     for v in pool.iter().take(snapshots_kept()) {
+         total = total.saturating_add(v.capacity());
+-        if kept > 0 && total > KEPT {
++        if kept > 0 && total > kept_bytes {
+             break;
+         }
+         kept += 1;
+-- 
+2.55.0.windows.5
+
