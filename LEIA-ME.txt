@@ -37,5 +37,7 @@ O que tem de diferente
 Licença: GPL-3.0-or-later, como o VIctory (ver LICENSE e asset-policy.md).
 Código-fonte deste build: pasta source\
 - o zip tem a árvore completa;
-- patches\ tem os 9 commits por cima do 85d5641.
+- o histórico está em MUDANCAS.txt e em https://github.com/flale1/VIctory-7900XTX (branch series-s-lowram).
+Ajuste automático (hw.ps1): com 12 GB de VRAM ou mais, mais buffers na placa e texturas esperadas; com 12 GB de VRAM e 32 GB de RAM ou mais, perfil Series X. Para forçar o Series S: $env:VICTORY_CONSOLE = 'series-s'.
+Depois de atualizar, rode o Preparar-Shaders.cmd de novo.
 Créditos: Marvisak/VIctory e colaboradores, fxceless, avatarmanz, trustno1-coder, myokex, Belobug, uiliannn e demais forks citados no histórico.

@@ -6,7 +6,7 @@ Build do [VIctory](https://github.com/Marvisak/VIctory) (camada que roda um tít
 
 ## Download
 
-Clique em **Code → Download ZIP** nesta página. O zip traz o `victory.exe`, o lançador e o código-fonte completo (em `source/`).
+Clique em **Code → Download ZIP** nesta página. O zip traz o `victory.exe`, o lançador e o código-fonte completo (em `source/`). O código em Rust, com histórico, também está em [flale1/VIctory-7900XTX](https://github.com/flale1/VIctory-7900XTX) (branch `series-s-lowram`).
 
 ## Como rodar
 
@@ -22,10 +22,11 @@ Clique em **Code → Download ZIP** nesta página. O zip traz o `victory.exe`, o
    $env:VICTORY_GAME_DIR = 'D:\Jogos\MeuDump'
    .\Play-VIctory.cmd
    ```
-5. Se a placa tiver 12-16 GB de VRAM, dá para subir a resolução:
-   ```powershell
-   $env:VICTORY_RENDER_SCALE = '0.75'; $env:VICTORY_CARD_BUFFERS_MB = '2048'
-   ```
+5. O pacote mede a RAM e a VRAM sozinho (`hw.ps1`) e ajusta o preset:
+   - **12 GB de VRAM ou mais**: 4 GB de buffers na placa e texturas esperadas (`VICTORY_TEXTURE_NO_WAIT=0`), sem rastro claro nem cenário sumindo ao girar a câmera.
+   - **12 GB de VRAM ou mais e 32 GB de RAM ou mais**: perfil **Series X**. O jogo guarda mais coisa na memória e não descarta o que fica para trás.
+   - Para forçar o Series S num PC grande: `$env:VICTORY_CONSOLE = 'series-s'` antes de rodar.
+   - Com 12-16 GB de VRAM também dá para subir a resolução: `$env:VICTORY_RENDER_SCALE = '0.75'`.
 6. Se der bug, rode o diagnóstico. Ele grava o log completo e a memória, e gera um zip para enviar:
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\Diagnostico.ps1
@@ -42,6 +43,7 @@ Requisitos: Windows 10/11 x64, CPU com AVX2, placa Direct3D 12 com Shader Model 
 | Modo de pouca RAM (`VICTORY_LOW_RAM`, liga sozinho com 24 GB ou menos; `VICTORY_LOW_RAM=0` desliga): caches ociosos por 15 s em vez de 5-10 min, janelas de 1 MiB, pool de snapshots e sobra de rascunho com 128 MiB | nosso |
 | O log diz o estágio e o tamanho de cada shader recusado | nosso |
 | Do [Belobug/VIctory-Belobug-AMD](https://github.com/Belobug/VIctory-Belobug-AMD): sombras em cascata certas na NVIDIA (wave32), interpolação por atributo, luz dos cômodos estabilizada pelo tempo, janelas limitadas quando a RAM aperta, busca rápida na submissão, uma barreira por buffer | `4fd34fd`, `0dc5d1b`, `b4ba4bb`, `ffc2cf6`, `306722b`, `773d902` e outros |
+| Shaders: leitura de primeira lane em lanes auxiliares (upstream `0601955`), buffers e imagens lidos só como dado (port parcial do corgi `53e7682`), pares wave32 e diagnóstico das duas recusas de água (VIctory-NVIDIA `f110b577`, fxceless `9613092b`) | `7886b8c9`, `bb2aaaa2`, `1511ab06`, `7df8e2cf`, `8a1932a6` |
 | Do Belobug, desligado por padrão (testar): Port 1, a memória gráfica do jogo usada direto, menos CPU | `86dc109`, `4b82f6c`, com `VICTORY_PORT_CONSTANTS=1` |
 
 A lista completa de commits está em [`MUDANCAS.txt`](MUDANCAS.txt) e o código completo em [`source/`](source).
@@ -70,13 +72,14 @@ GPL-3.0-or-later, como o VIctory (ver [LICENSE](LICENSE) e [asset-policy.md](ass
 O `Play-VIctory.cmd` e o `Preparar-Shaders.cmd` usam o mesmo `preset.cmd`, para o cache de shaders preparado valer na hora de jogar. Toda variável definida antes (`$env:...`) vence o valor do preset. Destaques:
 
 - `VICTORY_NAN_SCRUB=1`: valores inválidos dos shaders de pele viram 0 (ruído colorido nos rostos em NVIDIA).
-- `VICTORY_AMBIENT_AIR=0.5` e `VICTORY_AMBIENT_SETTLE=250,3`: menos névoa estourada e luz sem saltos.
+- `VICTORY_AMBIENT_AIR=0.5` e `VICTORY_AMBIENT_SETTLE=250,3`: menos névoa estourada e luz sem saltos. Se a névoa ainda estourar, teste `$env:VICTORY_AMBIENT_AIR = '0.25'`.
+- `VICTORY_PIPELINE_WAIT_MS=500` (era 10000): a abertura não congela esperando a placa criar pipelines novos. Algum objeto pode aparecer um instante depois.
 
 Depois de atualizar, rode o `Preparar-Shaders.cmd` de novo.
 
 ## Series X
 
-O padrão é o perfil Series S (menos RAM). Para jogar no perfil Series X (mais detalhe, bem mais RAM e VRAM; recomendado só com 32 GB de RAM ou mais e placa com 12 GB de VRAM ou mais):
+O padrão é o perfil Series S (menos RAM), a não ser em PC com 32 GB de RAM e 12 GB de VRAM ou mais, que já abre em Series X. Para jogar no perfil Series X em outro PC (mais detalhe, bem mais RAM e VRAM; recomendado só com 32 GB de RAM ou mais e placa com 12 GB de VRAM ou mais):
 
 ```powershell
 .\Play-SeriesX.cmd

@@ -1,4 +1,4 @@
-# Roda o jogo com log completo e, ao fechar, junta o diagnóstico num zip para enviar.
+﻿# Roda o jogo com log completo e, ao fechar, junta o diagnóstico num zip para enviar.
 # Uso, no PowerShell, dentro desta pasta:
 #   powershell -ExecutionPolicy Bypass -File .\Diagnostico.ps1
 # Ajustes opcionais antes (exemplo para placa de 16 GB):

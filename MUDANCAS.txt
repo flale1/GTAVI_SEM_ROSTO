@@ -1,22 +1,54 @@
-﻿814bb51 VItoriaBr CEO (local): VICTORY_SKIP_PIPELINES accepts @file (diagnostics)
-ca4005e VItoriaBr CEO (local): Approximate LDS in 32-lane lane branches, off by default (VICTORY_WAVE_LOOSE_LDS=1)
-167b2b3 VItoriaBr CEO (local): VICTORY_CACHE_CORES off by default (neutral on unknown CPUs)
-e5ff92c local: Merge fps/ask: a submission's asked ranges looked up by binary search; the memory-map walk every 5 min
-ef26628 local: coolfox fabb872a/641835a4: XMA voices refilled after their end (VICTORY_XMA_REFILL=1); DirectStorage staging floor (VICTORY_DSTORAGE_STAGING_MB)
-598ca16 local: GPU: cap idle windows under system-RAM pressure
-a82ccf3 Jake: Our threads prefer the cores of the largest last-level cache where all cores are of one class (VICTORY_CACHE_CORES, on; 0: not)
-c2e6659 local: coolfox 641835a4: one barrier per card buffer after its copies, however many copies lie in it
-177356e local: Renderer port 1: the 32-bit heap's pages get their section's slices in address order
-7ce956e local: Renderer port 1: the title's 32-bit graphics heap used in place (VICTORY_PORT_CONSTANTS=1, off by default)
-9b6f267 local: Light and texture probes; the stand-in's slow mean by the clock (VICTORY_AMBIENT_SETTLE, off)
-6f54f43 sawetco: Shaders: translate tiled cascade shadows exactly on wave32 hosts
-051f801 local: Shaders: one interpolation mode per signature row (after VIctory 13091f6e)
-23f1d3c VItoriaBr CEO (local): host pipeline refusals name their stage and code size
-3377b41 VItoriaBr CEO (local): NVIDIA faces: 16-bit values read through integer views (port of 77e13a9, faces part)
-01b81c1 VItoriaBr CEO (local): low ram: scratch chunks keep 128 MiB under VICTORY_LOW_RAM
-071580f VItoriaBr CEO (local): low ram: snapshot pool keeps 128 MiB under VICTORY_LOW_RAM
-13cb051 VItoriaBr CEO (local): low ram: 1 MiB window grid under VICTORY_LOW_RAM
-0aaa5d6 VItoriaBr CEO (local): low ram: shorter keep times for host caches under VICTORY_LOW_RAM
-22232ea trustno1-coder: Loader: render scale, own upscaler and watchdog title patches
-4ae3c6a trustno1-coder: NVIDIA: VICTORY_DYNAMIC_SLOTS on a capped view heap (stops dropped draws)
-c31838b trustno1-coder: NVIDIA: more dynamic descriptor slots; Series S interface plane (compose)
+1511ab06 2026-11-27 cccw
+    Image descriptors read only for their size dwords (partial port)
+8a1932a6 2026-11-26 fxceless
+    Translation diagnostics for the two refused 64-lane water programs (5dc3b25986622949, 6f225b641c5b0708)
+7df8e2cf 2026-11-26 Jeremy Goldberg
+    feat(diagnostics): load matching paired Wave32 shaders
+7886b8c9 2026-11-25 beloooo
+    A helper lane's v_readfirstlane reads its own value (upstream 0601955)
+bb2aaaa2 2026-11-26 VItoriaBr CEO (local)
+    Buffer views read only as data: record count from the host view (partial port)
+814bb515 2026-11-26 VItoriaBr CEO (local)
+    VICTORY_SKIP_PIPELINES accepts @file (diagnostics)
+ca4005e9 2026-11-26 VItoriaBr CEO (local)
+    Approximate LDS in 32-lane lane branches, off by default (VICTORY_WAVE_LOOSE_LDS=1)
+167b2b35 2026-11-26 VItoriaBr CEO (local)
+    VICTORY_CACHE_CORES off by default (neutral on unknown CPUs)
+e5ff92c0 2026-11-25 local
+    Merge fps/ask: a submission's asked ranges looked up by binary search; the memory-map walk every 5 min
+ef266289 2026-11-26 local
+    coolfox fabb872a/641835a4: XMA voices refilled after their end (VICTORY_XMA_REFILL=1); DirectStorage staging floor (VICTORY_DSTORAGE_STAGING_MB)
+598ca166 2026-11-26 local
+    GPU: cap idle windows under system-RAM pressure
+a82ccf33 2026-11-26 Jake
+    Our threads prefer the cores of the largest last-level cache where all cores are of one class (VICTORY_CACHE_CORES, on; 0: not)
+c2e66592 2026-11-26 local
+    coolfox 641835a4: one barrier per card buffer after its copies, however many copies lie in it
+177356e3 2026-11-25 local
+    Renderer port 1: the 32-bit heap's pages get their section's slices in address order
+7ce956e5 2026-11-25 local
+    Renderer port 1: the title's 32-bit graphics heap used in place (VICTORY_PORT_CONSTANTS=1, off by default)
+9b6f2671 2026-11-26 local
+    Light and texture probes; the stand-in's slow mean by the clock (VICTORY_AMBIENT_SETTLE, off)
+6f54f43f 2026-11-26 sawetco
+    Shaders: translate tiled cascade shadows exactly on wave32 hosts
+051f801f 2026-11-25 local
+    Shaders: one interpolation mode per signature row (after VIctory 13091f6e)
+23f1d3c5 2026-11-26 VItoriaBr CEO (local)
+    host pipeline refusals name their stage and code size
+3377b414 2026-11-26 VItoriaBr CEO (local)
+    NVIDIA faces: 16-bit values read through integer views (port of 77e13a9, faces part)
+01b81c1d 2026-11-26 VItoriaBr CEO (local)
+    low ram: scratch chunks keep 128 MiB under VICTORY_LOW_RAM
+071580f2 2026-11-26 VItoriaBr CEO (local)
+    low ram: snapshot pool keeps 128 MiB under VICTORY_LOW_RAM
+13cb0518 2026-11-26 VItoriaBr CEO (local)
+    low ram: 1 MiB window grid under VICTORY_LOW_RAM
+0aaa5d6f 2026-11-26 VItoriaBr CEO (local)
+    low ram: shorter keep times for host caches under VICTORY_LOW_RAM
+22232ea4 2026-11-25 trustno1-coder
+    Loader: render scale, own upscaler and watchdog title patches
+4ae3c6ab 2026-11-25 trustno1-coder
+    NVIDIA: VICTORY_DYNAMIC_SLOTS on a capped view heap (stops dropped draws)
+c31838b5 2026-11-25 trustno1-coder
+    NVIDIA: more dynamic descriptor slots; Series S interface plane (compose)
