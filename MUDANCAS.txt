@@ -1,4 +1,6 @@
-﻿167b2b3 VItoriaBr CEO (local): VICTORY_CACHE_CORES off by default (neutral on unknown CPUs)
+﻿814bb51 VItoriaBr CEO (local): VICTORY_SKIP_PIPELINES accepts @file (diagnostics)
+ca4005e VItoriaBr CEO (local): Approximate LDS in 32-lane lane branches, off by default (VICTORY_WAVE_LOOSE_LDS=1)
+167b2b3 VItoriaBr CEO (local): VICTORY_CACHE_CORES off by default (neutral on unknown CPUs)
 e5ff92c local: Merge fps/ask: a submission's asked ranges looked up by binary search; the memory-map walk every 5 min
 ef26628 local: coolfox fabb872a/641835a4: XMA voices refilled after their end (VICTORY_XMA_REFILL=1); DirectStorage staging floor (VICTORY_DSTORAGE_STAGING_MB)
 598ca16 local: GPU: cap idle windows under system-RAM pressure

@@ -97,3 +97,12 @@ São duas etapas, cada uma feita uma vez por versão:
 2. **`Aquecer-Driver.cmd`**: o jogo registra os pipelines que usa (`VICTORY_PIPELINE_BOOK=1`, já ligado no preset). Depois de jogar pelo menos uma vez, rode este script e ele prepara esses pipelines no cache do driver da placa. Rode de novo ao atualizar o driver ou o pacote. Com `Aquecer-Driver.cmd tudo`, ele prepara todos os pipelines que o jogo criou, mas isso demora muito.
 
 Nenhum dos dois aumenta o fps médio. Eles tiram os engasgos da primeira vez em que algo aparece.
+
+## Shaders recusados e caça a bugs de shader
+
+- `VICTORY_WAVE_LOOSE_LDS=1` (ligado no preset): LDS aproximado em grupos de 32 threads, port de [Corgansm/victory-corgi](https://github.com/Corgansm/victory-corgi) `53e7682`. Faz funcionar na NVIDIA 5 de 9 shaders de cálculo que a placa recusava. Muda a tradução: rode o `Preparar-Shaders.cmd` de novo. Se piorar algo, desligue com `$env:VICTORY_WAVE_LOOSE_LDS = '0'` e prepare os shaders de novo.
+- `Cacar-Shader.ps1`: acha por busca binária qual shader causa um bug visual.
+  1. Jogue uma vez normalmente até o lugar do bug. Isso grava a lista de shaders usados.
+  2. Rode `.\Cacar-Shader.ps1`. A cada rodada ele desliga metade dos shaders e abre o jogo. Vá até o bug, feche o jogo e responda `s` ou `n`.
+  3. Em umas 10-15 rodadas ele mostra o hash culpado e gera `cacar-ultimo-log.zip` para enviar.
+  4. Dá para parar e continuar depois com `.\Cacar-Shader.ps1 -Continuar`. Um save perto do bug deixa cada rodada mais rápida.

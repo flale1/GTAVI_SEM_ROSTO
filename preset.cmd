@@ -40,3 +40,5 @@ rem nevoa e luz: teto do espalhamento no ar e luz que nao da saltos (Belobug)
 if not defined VICTORY_AMBIENT_SETTLE set "VICTORY_AMBIENT_SETTLE=250,3"
 rem registra os pipelines que o jogo cria, para o Aquecer-Driver.cmd prepara-los no cache do driver
 if not defined VICTORY_PIPELINE_BOOK set "VICTORY_PIPELINE_BOOK=1"
+rem LDS aproximado em grupos de 32 (port do victory-corgi): faz 5 shaders de calculo recusados na NVIDIA funcionarem (entra na chave do cache)
+if not defined VICTORY_WAVE_LOOSE_LDS set "VICTORY_WAVE_LOOSE_LDS=1"
