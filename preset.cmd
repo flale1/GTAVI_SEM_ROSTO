@@ -38,3 +38,5 @@ rem rostos em NVIDIA: valores NaN dos shaders de pele viram 0 (entra na chave do
 if not defined VICTORY_NAN_SCRUB set "VICTORY_NAN_SCRUB=1"
 rem nevoa e luz: teto do espalhamento no ar e luz que nao da saltos (Belobug)
 if not defined VICTORY_AMBIENT_SETTLE set "VICTORY_AMBIENT_SETTLE=250,3"
+rem registra os pipelines que o jogo cria, para o Aquecer-Driver.cmd prepara-los no cache do driver
+if not defined VICTORY_PIPELINE_BOOK set "VICTORY_PIPELINE_BOOK=1"

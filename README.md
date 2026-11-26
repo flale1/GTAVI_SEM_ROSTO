@@ -88,3 +88,12 @@ Ou, com o diagnóstico:
 $env:VICTORY_CONSOLE = 'series-x'
 powershell -ExecutionPolicy Bypass -File .\Diagnostico.ps1
 ```
+
+## Menos engasgos: preparar os caches
+
+São duas etapas, cada uma feita uma vez por versão:
+
+1. **`Preparar-Shaders.cmd`**: traduz todos os shaders do jogo (alguns minutos). Rode antes de jogar.
+2. **`Aquecer-Driver.cmd`**: o jogo registra os pipelines que usa (`VICTORY_PIPELINE_BOOK=1`, já ligado no preset). Depois de jogar pelo menos uma vez, rode este script e ele prepara esses pipelines no cache do driver da placa. Rode de novo ao atualizar o driver ou o pacote. Com `Aquecer-Driver.cmd tudo`, ele prepara todos os pipelines que o jogo criou, mas isso demora muito.
+
+Nenhum dos dois aumenta o fps médio. Eles tiram os engasgos da primeira vez em que algo aparece.
