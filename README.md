@@ -6,7 +6,7 @@ Build do [VIctory](https://github.com/Marvisak/VIctory) (camada que roda um tít
 
 ## Download
 
-Baixe o zip na aba **[Releases](../../releases)**. Ele traz o `victory.exe`, o lançador e o código-fonte completo.
+Clique em **Code → Download ZIP** nesta página. O zip traz o `victory.exe`, o lançador e o código-fonte completo (em `source/`).
 
 ## Como rodar
 
@@ -41,7 +41,7 @@ Requisitos: Windows 10/11 x64, CPU com AVX2, placa Direct3D 12 com Shader Model 
 | Modo de pouca RAM (`VICTORY_LOW_RAM`, liga sozinho com 24 GB ou menos; `VICTORY_LOW_RAM=0` desliga): caches ociosos por 15 s em vez de 5-10 min, janelas de 1 MiB, pool de snapshots e sobra de rascunho com 128 MiB | nosso |
 | O log diz o estágio e o tamanho de cada shader recusado | nosso |
 
-Os patches estão em [`patches/`](patches). O código completo vai no zip da release.
+Os patches estão em [`patches/`](patches) e o código completo em [`source/`](source).
 
 ## Estado
 
