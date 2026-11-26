@@ -64,3 +64,12 @@ Testado numa RTX 4060 Ti 8 GB com 24 GB de RAM: Series S, cerca de 5 fps. Numa R
 ## Licença e créditos
 
 GPL-3.0-or-later, como o VIctory (ver [LICENSE](LICENSE) e [asset-policy.md](asset-policy.md)). Créditos a Marvisak/VIctory e colaboradores, fxceless, avatarmanz, trustno1-coder, myokex, Belobug, uiliannn e aos demais forks citados no histórico. Feito com ajuda de IA (Claude Code).
+
+## Preset (`preset.cmd`)
+
+O `Play-VIctory.cmd` e o `Preparar-Shaders.cmd` usam o mesmo `preset.cmd`, para o cache de shaders preparado valer na hora de jogar. Toda variável definida antes (`$env:...`) vence o valor do preset. Destaques:
+
+- `VICTORY_NAN_SCRUB=1`: valores inválidos dos shaders de pele viram 0 (ruído colorido nos rostos em NVIDIA).
+- `VICTORY_AMBIENT_AIR=0.5` e `VICTORY_AMBIENT_SETTLE=250,3`: menos névoa estourada e luz sem saltos.
+
+Depois de atualizar, rode o `Preparar-Shaders.cmd` de novo.

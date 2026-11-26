@@ -8,6 +8,7 @@ if not defined VICTORY_GAME_DIR (
   echo Defina VICTORY_GAME_DIR com a pasta do seu dump, que contem game_scarlett_master.exe. 1>&2
   exit /b 2
 )
+call "%~dp0preset.cmd"
 echo Traduzindo os shaders de "%VICTORY_GAME_DIR%". Pode levar alguns minutos...
 "%~dp0victory.exe" shaders "%VICTORY_GAME_DIR%"
 echo Pronto. Agora rode o Play-VIctory.cmd.
