@@ -73,3 +73,18 @@ O `Play-VIctory.cmd` e o `Preparar-Shaders.cmd` usam o mesmo `preset.cmd`, para 
 - `VICTORY_AMBIENT_AIR=0.5` e `VICTORY_AMBIENT_SETTLE=250,3`: menos névoa estourada e luz sem saltos.
 
 Depois de atualizar, rode o `Preparar-Shaders.cmd` de novo.
+
+## Series X
+
+O padrão é o perfil Series S (menos RAM). Para jogar no perfil Series X (mais detalhe, bem mais RAM e VRAM; recomendado só com 32 GB de RAM ou mais e placa com 12 GB de VRAM ou mais):
+
+```powershell
+.\Play-SeriesX.cmd
+```
+
+Ou, com o diagnóstico:
+
+```powershell
+$env:VICTORY_CONSOLE = 'series-x'
+powershell -ExecutionPolicy Bypass -File .\Diagnostico.ps1
+```

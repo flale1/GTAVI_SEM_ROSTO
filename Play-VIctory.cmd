@@ -15,5 +15,7 @@ if not exist "%VICTORY_GAME_DIR%\game_scarlett_master.exe" (
 set "runner=%~dp0victory.exe"
 call "%~dp0preset.cmd"
 rem VICTORY_LOW_RAM liga sozinho com 24 GB ou menos; VICTORY_LOW_RAM=0 desliga os cortes de RAM
-"%runner%" run "%VICTORY_GAME_DIR%\game_scarlett_master.exe" --console series-s --execute
+if not defined VICTORY_CONSOLE set "VICTORY_CONSOLE=series-s"
+echo Console: %VICTORY_CONSOLE%
+"%runner%" run "%VICTORY_GAME_DIR%\game_scarlett_master.exe" --console %VICTORY_CONSOLE% --execute
 exit /b %errorlevel%
