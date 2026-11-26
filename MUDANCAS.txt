@@ -1,0 +1,20 @@
+﻿167b2b3 VItoriaBr CEO (local): VICTORY_CACHE_CORES off by default (neutral on unknown CPUs)
+e5ff92c local: Merge fps/ask: a submission's asked ranges looked up by binary search; the memory-map walk every 5 min
+ef26628 local: coolfox fabb872a/641835a4: XMA voices refilled after their end (VICTORY_XMA_REFILL=1); DirectStorage staging floor (VICTORY_DSTORAGE_STAGING_MB)
+598ca16 local: GPU: cap idle windows under system-RAM pressure
+a82ccf3 Jake: Our threads prefer the cores of the largest last-level cache where all cores are of one class (VICTORY_CACHE_CORES, on; 0: not)
+c2e6659 local: coolfox 641835a4: one barrier per card buffer after its copies, however many copies lie in it
+177356e local: Renderer port 1: the 32-bit heap's pages get their section's slices in address order
+7ce956e local: Renderer port 1: the title's 32-bit graphics heap used in place (VICTORY_PORT_CONSTANTS=1, off by default)
+9b6f267 local: Light and texture probes; the stand-in's slow mean by the clock (VICTORY_AMBIENT_SETTLE, off)
+6f54f43 sawetco: Shaders: translate tiled cascade shadows exactly on wave32 hosts
+051f801 local: Shaders: one interpolation mode per signature row (after VIctory 13091f6e)
+23f1d3c VItoriaBr CEO (local): host pipeline refusals name their stage and code size
+3377b41 VItoriaBr CEO (local): NVIDIA faces: 16-bit values read through integer views (port of 77e13a9, faces part)
+01b81c1 VItoriaBr CEO (local): low ram: scratch chunks keep 128 MiB under VICTORY_LOW_RAM
+071580f VItoriaBr CEO (local): low ram: snapshot pool keeps 128 MiB under VICTORY_LOW_RAM
+13cb051 VItoriaBr CEO (local): low ram: 1 MiB window grid under VICTORY_LOW_RAM
+0aaa5d6 VItoriaBr CEO (local): low ram: shorter keep times for host caches under VICTORY_LOW_RAM
+22232ea trustno1-coder: Loader: render scale, own upscaler and watchdog title patches
+4ae3c6a trustno1-coder: NVIDIA: VICTORY_DYNAMIC_SLOTS on a capped view heap (stops dropped draws)
+c31838b trustno1-coder: NVIDIA: more dynamic descriptor slots; Series S interface plane (compose)

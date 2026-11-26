@@ -41,8 +41,21 @@ Requisitos: Windows 10/11 x64, CPU com AVX2, placa Direct3D 12 com Shader Model 
 | Rostos em NVIDIA: valores de 16 bits lidos por views inteiras (cabeças sumindo) | port de `77e13a9` do VIctory-NVIDIA; a parte de cor de alvo ficou de fora |
 | Modo de pouca RAM (`VICTORY_LOW_RAM`, liga sozinho com 24 GB ou menos; `VICTORY_LOW_RAM=0` desliga): caches ociosos por 15 s em vez de 5-10 min, janelas de 1 MiB, pool de snapshots e sobra de rascunho com 128 MiB | nosso |
 | O log diz o estágio e o tamanho de cada shader recusado | nosso |
+| Do [Belobug/VIctory-Belobug-AMD](https://github.com/Belobug/VIctory-Belobug-AMD): sombras em cascata certas na NVIDIA (wave32), interpolação por atributo, luz dos cômodos estabilizada pelo tempo, janelas limitadas quando a RAM aperta, busca rápida na submissão, uma barreira por buffer | `4fd34fd`, `0dc5d1b`, `b4ba4bb`, `ffc2cf6`, `306722b`, `773d902` e outros |
+| Do Belobug, desligado por padrão (testar): Port 1, a memória gráfica do jogo usada direto, menos CPU | `86dc109`, `4b82f6c`, com `VICTORY_PORT_CONSTANTS=1` |
 
-Os patches estão em [`patches/`](patches) e o código completo em [`source/`](source).
+A lista completa de commits está em [`MUDANCAS.txt`](MUDANCAS.txt) e o código completo em [`source/`](source).
+
+### Testes opcionais
+
+Para testar o Port 1 (menos CPU; não confirmado em NVIDIA), antes de rodar:
+```powershell
+$env:VICTORY_PORT_CONSTANTS = '1'
+```
+Se aparecerem blocos ou texturas erradas, teste desligar a atualização sem espera:
+```powershell
+$env:VICTORY_TEXTURE_NO_WAIT = '0'
+```
 
 ## Estado
 
