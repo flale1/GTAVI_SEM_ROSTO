@@ -3,8 +3,8 @@ rem Preset comum do Play-VIctory.cmd e do Preparar-Shaders.cmd. As variaveis que
 rem de shaders (BVH_MISS, NAN_SCRUB) TEM que ser iguais nos dois, senao o cache preparado nao e usado.
 rem Toda variavel ja definida antes (set ou $env:) vence o valor daqui.
 rem Placa e RAM: com 12 GB de VRAM ou mais, mais buffers na placa e texturas esperadas (sem rastro ao girar a camera);
-rem com 12 GB de VRAM ou mais e limite de memoria (RAM + arquivo de paginacao) de 48 GB ou mais, perfil Series X
-rem (o jogo nao descarta o que fica para tras). O Series X chega a 38 GB: com limite menor, falta memoria e o jogo fecha.
+rem com 12 GB de VRAM ou mais, perfil Series X (o jogo nao descarta o que fica para tras). O Series X chega a 38 GB:
+rem com limite de memoria (RAM + arquivo de paginacao) menor, o Play-VIctory.cmd avisa.
 if not defined VICTORY_RAM_GB for /f "tokens=1,2,3" %%a in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0hw.ps1"') do (
   set "VICTORY_RAM_GB=%%a"
   set "VICTORY_VRAM_GB=%%b"
@@ -15,7 +15,7 @@ if not defined VICTORY_VRAM_GB set "VICTORY_VRAM_GB=0"
 if not defined VICTORY_COMMIT_GB set "VICTORY_COMMIT_GB=0"
 if %VICTORY_VRAM_GB% GEQ 12 if not defined VICTORY_CARD_BUFFERS_MB set "VICTORY_CARD_BUFFERS_MB=4096"
 if %VICTORY_VRAM_GB% GEQ 12 if not defined VICTORY_TEXTURE_NO_WAIT set "VICTORY_TEXTURE_NO_WAIT=0"
-if %VICTORY_VRAM_GB% GEQ 12 if %VICTORY_COMMIT_GB% GEQ 48 if not defined VICTORY_CONSOLE set "VICTORY_CONSOLE=series-x"
+if %VICTORY_VRAM_GB% GEQ 12 if not defined VICTORY_CONSOLE set "VICTORY_CONSOLE=series-x"
 rem preset base do fork avatarmanz (scripts\play.ps1)
 if not defined VICTORY_TEXTURE_NO_WAIT set "VICTORY_TEXTURE_NO_WAIT=1"
 if not defined VICTORY_RELAY set "VICTORY_RELAY=2"

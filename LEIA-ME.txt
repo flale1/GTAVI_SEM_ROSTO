@@ -38,7 +38,7 @@ Licença: GPL-3.0-or-later, como o VIctory (ver LICENSE e asset-policy.md).
 Código-fonte deste build: pasta source\
 - o zip tem a árvore completa;
 - o histórico está em MUDANCAS.txt e em https://github.com/flale1/VIctory-7900XTX (branch series-s-lowram).
-Ajuste automático (hw.ps1): com 12 GB de VRAM ou mais, mais buffers na placa e texturas esperadas; com 12 GB de VRAM e limite de memória (RAM + paginação) de 48 GB ou mais, perfil Series X. Para forçar o Series S: $env:VICTORY_CONSOLE = 'series-s'.
+Ajuste automático (hw.ps1): com 12 GB de VRAM ou mais, mais buffers na placa e texturas esperadas; com 12 GB de VRAM ou mais, perfil Series X. Para forçar o Series S: $env:VICTORY_CONSOLE = 'series-s'.
 Depois de atualizar, rode o Preparar-Shaders.cmd de novo.
 Créditos: Marvisak/VIctory e colaboradores, fxceless, avatarmanz, trustno1-coder, myokex, Belobug, uiliannn e demais forks citados no histórico.
 
@@ -49,4 +49,4 @@ Series S precisa de 32 GB de limite; Series X, de 48 GB. Para aumentar:
   2. Aba Avancado, Desempenho, Configuracoes. Na nova janela, aba Avancado, Memoria virtual, Alterar.
   3. Desmarque "Gerenciar automaticamente", escolha o disco C: (SSD), Tamanho personalizado: inicial 32768, maximo 49152.
   4. Definir, OK, e reinicie o PC.
-O Series X so liga sozinho com 12 GB de VRAM e limite de 48 GB ou mais.
+O Series X liga sozinho com 12 GB de VRAM ou mais; com limite abaixo de 48 GB o Play-VIctory.cmd avisa.

@@ -24,7 +24,7 @@ Clique em **Code → Download ZIP** nesta página. O zip traz o `victory.exe`, o
    ```
 5. O pacote mede a RAM e a VRAM sozinho (`hw.ps1`) e ajusta o preset:
    - **12 GB de VRAM ou mais**: 4 GB de buffers na placa e texturas esperadas (`VICTORY_TEXTURE_NO_WAIT=0`), sem rastro claro nem cenário sumindo ao girar a câmera.
-   - **12 GB de VRAM ou mais e limite de memória de 48 GB ou mais** (RAM + arquivo de paginação): perfil **Series X**. O jogo guarda mais coisa na memória e não descarta o que fica para trás. Ele chega a 38 GB; com limite menor, falta memória e o jogo fecha.
+   - **12 GB de VRAM ou mais**: perfil **Series X**. O jogo guarda mais coisa na memória e não descarta o que fica para trás. Ele chega a 38 GB: com limite de memória (RAM + paginação) abaixo de 48 GB, aumente a paginação ou o jogo pode fechar.
    - Se o limite for menor do que o perfil precisa (Series S: 32 GB, Series X: 48 GB), o `Play-VIctory.cmd` avisa. Para aumentar o arquivo de paginação: Exibir configurações avançadas do sistema → Desempenho → Configurações → Avançado → Memória virtual → Alterar → desmarque "Gerenciar automaticamente" → C: → Tamanho personalizado, inicial `32768` e máximo `49152` → Definir → reinicie.
    - Para forçar o Series S num PC grande: `$env:VICTORY_CONSOLE = 'series-s'` antes de rodar.
    - Com 12-16 GB de VRAM também dá para subir a resolução: `$env:VICTORY_RENDER_SCALE = '0.75'`.
@@ -80,7 +80,7 @@ Depois de atualizar, rode o `Preparar-Shaders.cmd` de novo.
 
 ## Series X
 
-O padrão é o perfil Series S (menos RAM), a não ser em PC com 12 GB de VRAM e limite de memória (RAM + paginação) de 48 GB ou mais, que já abre em Series X. Para jogar no perfil Series X em outro PC (mais detalhe, bem mais RAM e VRAM; recomendado só com 32 GB de RAM ou mais e placa com 12 GB de VRAM ou mais):
+O padrão é o perfil Series S (menos RAM), a não ser em placa com 12 GB de VRAM ou mais, que já abre em Series X. Para jogar no perfil Series X em outro PC (mais detalhe, bem mais RAM e VRAM; recomendado só com 32 GB de RAM ou mais e placa com 12 GB de VRAM ou mais):
 
 ```powershell
 .\Play-SeriesX.cmd
