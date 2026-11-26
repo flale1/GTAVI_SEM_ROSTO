@@ -12,7 +12,8 @@ Clique em **Code → Download ZIP** nesta página. O zip traz o `victory.exe`, o
 
 1. Instale o Microsoft Visual C++ Redistributable x64 (2015-2022).
 2. Extraia o zip dentro da pasta do seu dump, ao lado do `game_scarlett_master.exe`.
-3. Dê dois cliques em `Play-VIctory.cmd`, ou rode no PowerShell, dentro da pasta extraída:
+3. Na primeira vez (e a cada versão nova), dê dois cliques em `Preparar-Shaders.cmd` e espere terminar. Leva alguns minutos e evita imagem errada (água cinza, borrões) e engasgos na primeira passagem por cada lugar.
+4. Dê dois cliques em `Play-VIctory.cmd`, ou rode no PowerShell, dentro da pasta extraída:
    ```powershell
    .\Play-VIctory.cmd
    ```
@@ -21,11 +22,11 @@ Clique em **Code → Download ZIP** nesta página. O zip traz o `victory.exe`, o
    $env:VICTORY_GAME_DIR = 'D:\Jogos\MeuDump'
    .\Play-VIctory.cmd
    ```
-4. Se a placa tiver 12-16 GB de VRAM, dá para subir a resolução:
+5. Se a placa tiver 12-16 GB de VRAM, dá para subir a resolução:
    ```powershell
    $env:VICTORY_RENDER_SCALE = '0.75'; $env:VICTORY_CARD_BUFFERS_MB = '2048'
    ```
-5. Se der bug, rode o diagnóstico. Ele grava o log completo e a memória, e gera um zip para enviar:
+6. Se der bug, rode o diagnóstico. Ele grava o log completo e a memória, e gera um zip para enviar:
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\Diagnostico.ps1
    ```
