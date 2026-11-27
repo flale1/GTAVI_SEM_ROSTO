@@ -15,6 +15,14 @@ use crate::policy::ensure_outside_repo;
 pub struct Config {
     /// The user's dump of the title.
     pub game_dir: Option<PathBuf>,
+    /// Folder containing the PC FidelityFX upscaler for the optional FSR profile.
+    pub fidelityfx_dir: Option<PathBuf>,
+    /// Folder containing the PC FidelityFX frame generation DLLs.
+    /// Defaults to the upscaler's folder when no separate path was given.
+    pub ffx_fg_dir: Option<PathBuf>,
+    /// Folder containing NVIDIA's `nvngx_dlss.dll` for the optional DLSS
+    /// profile; without it the driver's own copy runs.
+    pub dlss_dir: Option<PathBuf>,
     /// Root for all derived data. Always outside the repository.
     pub cache_dir: PathBuf,
     /// What titles write and must keep (persistent local storage). Never
@@ -37,6 +45,9 @@ struct FileConfig {
 #[serde(deny_unknown_fields)]
 struct FilePaths {
     game_dir: Option<PathBuf>,
+    fidelityfx_dir: Option<PathBuf>,
+    ffx_fg_dir: Option<PathBuf>,
+    dlss_dir: Option<PathBuf>,
     cache_dir: Option<PathBuf>,
     data_dir: Option<PathBuf>,
     #[serde(default)]
@@ -46,7 +57,7 @@ struct FilePaths {
 impl Config {
     /// Loads configuration from the environment and the config file.
     pub fn load() -> Result<Self> {
-        let explicit = std::env::var_os("VICTORY_CONFIG").map(PathBuf::from);
+        let explicit = explicit_config_path(|k| std::env::var_os(k));
         let path = explicit
             .clone()
             .unwrap_or_else(|| PathBuf::from("victory.toml"));
@@ -91,8 +102,15 @@ impl Config {
         let data_dir = env_path("VICTORY_DATA_DIR")
             .or(file.data_dir)
             .map_or_else(|| default_dir("data"), Ok)?;
+        let fidelityfx_dir = env_path("VICTORY_FIDELITYFX_DIR").or(file.fidelityfx_dir);
+        let ffx_fg_dir = env_path("VICTORY_FFX_FG_DIR")
+            .or(file.ffx_fg_dir)
+            .or_else(|| fidelityfx_dir.clone());
         Ok(Config {
             game_dir: env_path("VICTORY_GAME_DIR").or(file.game_dir),
+            fidelityfx_dir,
+            ffx_fg_dir,
+            dlss_dir: env_path("VICTORY_DLSS_DIR").or(file.dlss_dir),
             cache_dir,
             data_dir,
             test_titles,
@@ -117,6 +135,14 @@ impl Config {
     pub fn data_subdir(&self, sub: &str) -> Result<PathBuf> {
         subdir(&self.data_dir, sub)
     }
+}
+
+/// The config file explicitly named by the environment, if any. An empty
+/// `VICTORY_CONFIG` means unset, like the other path variables.
+fn explicit_config_path(env: impl Fn(&str) -> Option<std::ffi::OsString>) -> Option<PathBuf> {
+    env("VICTORY_CONFIG")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
 }
 
 fn subdir(root: &Path, sub: &str) -> Result<PathBuf> {
@@ -166,6 +192,25 @@ mod tests {
     }
 
     #[test]
+    fn frame_generation_prefers_its_path_and_can_use_the_upscalers_folder() {
+        for (file, env_value, wanted) in [
+            ("ffx_fg_dir = 'from-file'", "from-env", "from-env"),
+            ("ffx_fg_dir = 'from-file'", "", "from-file"),
+            ("", "", "upscaler-from-env"),
+        ] {
+            let text = format!("[paths]\nfidelityfx_dir = 'upscaler-from-file'\n{file}");
+            let config: FileConfig = toml::from_str(&text).unwrap();
+            let env = |key: &str| match key {
+                "VICTORY_FFX_FG_DIR" => Some(OsString::from(env_value)),
+                "VICTORY_FIDELITYFX_DIR" => Some(OsString::from("upscaler-from-env")),
+                _ => None,
+            };
+            let config = Config::resolve(config.paths, None, env).unwrap();
+            assert_eq!(config.ffx_fg_dir, Some(PathBuf::from(wanted)));
+        }
+    }
+
+    #[test]
     fn empty_test_titles_env_is_ignored() {
         let file = FilePaths {
             test_titles: vec!["from-file".into()],
@@ -185,6 +230,17 @@ mod tests {
         assert_eq!(
             cfg.test_titles,
             vec![PathBuf::from("first"), PathBuf::from("second")]
+        );
+    }
+
+    #[test]
+    fn empty_config_env_is_ignored() {
+        let empty = |k: &str| (k == "VICTORY_CONFIG").then(OsString::new);
+        assert_eq!(explicit_config_path(empty), None);
+        let set = |k: &str| (k == "VICTORY_CONFIG").then(|| OsString::from("custom.toml"));
+        assert_eq!(
+            explicit_config_path(set),
+            Some(PathBuf::from("custom.toml"))
         );
     }
 

@@ -1,0 +1,6 @@
+# Report B — avatar PRs, GPU memory/descriptors
+Evidence from S:\VIctory-main\target\sdd\runs\20261126-071649-f45-seriess.log: view heap capped at 1,000,000 while title has 1,245,184 + 262,144 dynamic → slots past ~737k read null (wrong textures); "placed unordered texture view not mirrored dimension=3" (UAV writes lost → reflections/GI); heap passes 19/36/124 ms spikes every 16th pass (full rescan draw.rs:1612); copies 21-32 ms/frame; 5.1-5.9k textures waiting.
+
+PORT order: (1) #121 sampler heap 2048 + null 2047 (S, host.rs:960) + #23 structured→raw unaligned (S, own_bytes_if :2386 / raw_window :2447) + #150 deferred().backs in readback ranges (S, host.rs:5854) · (2) #96 probe list [1835008..1M] (S, env-gated, host.rs:848) then 8-shard best-fit pool (M, host.rs:1135) · (3) #97 placed texture UAV → title resource (M, host.rs:3024-3034/3080, resource.rs:1192) · (4) #24 + avatar HEAP_SPREAD (M, removes 115 ms spike) · (5) #125 per-pipeline wait cap + catch_unwind (S, make.rs:70/202) · (6) #98 AVX2 streaming stores (M, A/B).
+MAYBE: #48 · #42 RTV/DSV ring 1024 race (host.rs:37/6222/6240; cheap fix 16k ring) · #72 idea only (reverse slot map so bindless-pinned textures evict; let_go_idle resource.rs:1919) · #68 (watch.rs:816/832).
+SKIP: #92 #77 #180 #47 #58 #157; N/A #119 #105 #178 #126; already #17 #14 #148.

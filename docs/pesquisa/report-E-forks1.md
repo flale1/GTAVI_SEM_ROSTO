@@ -1,0 +1,11 @@
+# Report E — forks part 1 (raw data scratchpad\e1\compare.txt, branches.txt)
+
+PORT:
+1. mgrein/VIctory-7900XTX @ nv/integration (64 commits, no PR). RTX 4070 12GB: 160→79 ms (6.2→12.7 fps), dropped draws 850→350, BVH builder runs 53 pipelines, no device loss 10 min. f48bacb1 (+876, emit/wave_same.rs, 52/52 builder programs translate → reflections) · deeb4d19 CARD_BUFFERS_MIN_KB=64 MB=1280 on ≤12GB (68→49.8 ms card) · 8f2ac664 indirect wide (check our split >131k) · wave32: 16fc3d72 GROUP_SYNC auto, 2056dae1 ds_bpermute half, 2bbad48d OOB LDS=0, 3f029ba8, 3cf024b7 · memory/latency: 5340e71f BC cap, 87274d99 2 frames ahead, 046c1631 94ae120c RAM governor, a2cf68bb reaper list reset, 2cc31e94, cb46ff5a Reflex, e72fa040 NV profile.
+2. alex-IchiQ/MrBigBalls_VI @ nvidia 24a819ba 0ef86683 nvprofile.rs: NVAPI DRS 0x001ABC0F (512MB pipeline code reserve → 0x887a0005); NVIDIA has "The Culling" profile for victory.exe → rename exe.
+3. triippywhale: 717cbc78 helper-lane readfirstlane (DEVICE_HUNG ~200 s) · b2413dd7 ForceEarlyDepthStencil · f8e6c3f3 light textures card copy · d2fb45b4 BVH results · 239a7798 R32_UINT as R32_FLOAT · stability 57e02c67 0de9b5bb 9c49e27e 1a4298f2 720686d4 140c8c91 0e3aeeb3 d87c183f.
+4. YukiRyuu/VIctory-7900XT: 05f0ad2a root view window past 4MiB cell (page fault) · b2248e54 f2420f00 VirtualQuery 1/s + read lock (17.8→19.6 fps, 1% 11.7→17.8).
+5. jasonc123456/victory-nvidia-fork: 5ad04ad8 stretch removes jitter (Series S) · 19244ba2 table slots freed on landing (check queue.rs:300 execute_late).
+6. LloydNicholson/VIctory-Linux: 564d439b dirty textures after staging refresh (texture.rs:733) · 65d13a43 (= fxceless #1241) alias copy redo · bbf04d60 RT format pipeline variant.
+MAYBE: HamudL fix/lane-uniform-soundness 801194e9 · ASsDevpile af966f8f DLSS via NGX proxy, 7adf22cf CLAMP_WAITS, fdaee187 BVH_MISS · MImi8superr b237173c d43a6666 · XaviFortes dc1675b2 · gloger2003 c71ca531 332c8e98 bd9ec660 766fc951 33f8386d · YukiRyuu e5e54302 · Finiskyy 35327c54 · jtrudeau1530 830dc191 · lcfcntr009 0ec5401e · zeex64 8711f534.
+Order: jitter + CARD_BUFFERS env → nvprofile/rename → 717cbc78 b2413dd7 → YukiRyuu → texture fixes → f48bacb1+801194e9 → mgrein memory.

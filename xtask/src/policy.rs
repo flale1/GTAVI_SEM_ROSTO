@@ -3,15 +3,18 @@
 //!
 //! This is an allowlist, not a blocklist: a file passes only if its name is
 //! on the list, it is not too big, it is text, and it does not smuggle data
-//! inside text (long hex/base64 runs).
+//! inside text (long hex/base64 runs or decimal byte arrays).
 
 use std::path::Path;
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 
-const MAX_FILE_SIZE: usize = 512 * 1024;
+// (The translator's one file is 570 KiB of source.)
+const MAX_FILE_SIZE: usize = 640 * 1024;
 const MAX_ENCODED_RUN: usize = 512;
+// The XMA decoder has a 272-entry decimal VLC table.
+const MAX_DECIMAL_BYTES: usize = 512;
 
 const ALLOWED_EXTENSIONS: &[&str] = &[
     "rs", "toml", "md", "txt", "lock", "yml", "yaml", "json", "hlsl", "hlsli", "ps1", "cmd", "sh",
@@ -25,6 +28,12 @@ const ALLOWED_NAMES: &[&str] = &[
     "LICENSE",
     "LICENSE-MIT",
     "LICENSE-APACHE",
+];
+// These text files still go through every content check below.
+const ALLOWED_TEXT_PATHS: &[&str] = &[
+    "docs/.nojekyll",
+    "docs/index.html",
+    "linux/wineserver/view-tree.patch",
 ];
 
 /// Paths explicitly exempted, with a reason. Keep this empty if at all possible.
@@ -88,7 +97,7 @@ pub fn run(root: &Path, staged: bool) -> Result<()> {
     )
 }
 
-fn list_files(root: &Path, staged: bool) -> Result<Vec<String>> {
+pub(crate) fn list_files(root: &Path, staged: bool) -> Result<Vec<String>> {
     let git = |args: &[&str]| -> Result<Option<Vec<String>>> {
         let out = Command::new("git")
             .args(args)
@@ -148,6 +157,7 @@ pub fn check(path: &str, content: &[u8]) -> Vec<String> {
     let name = path.rsplit('/').next().unwrap_or(path);
     let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase());
     let allowed = ALLOWED_NAMES.contains(&name)
+        || ALLOWED_TEXT_PATHS.contains(&path)
         || ext
             .as_deref()
             .is_some_and(|e| ALLOWED_EXTENSIONS.contains(&e));
@@ -171,6 +181,19 @@ pub fn check(path: &str, content: &[u8]) -> Vec<String> {
         && run > MAX_ENCODED_RUN
     {
         problems.push(format!("{run}-character hex/base64 run (embedded data?)"));
+    } else {
+        let digits = longest_hex_literal_run(content);
+        if digits > MAX_ENCODED_RUN {
+            problems.push(format!(
+                "{digits} hex digits in one run of \\x/0x literals (embedded data?)"
+            ));
+        }
+        let decimal_bytes = longest_decimal_byte_array(content);
+        if decimal_bytes > MAX_DECIMAL_BYTES {
+            problems.push(format!(
+                "{decimal_bytes} decimal bytes in one array (embedded data?)"
+            ));
+        }
     }
     problems
 }
@@ -181,9 +204,69 @@ fn longest_encoded_run(content: &[u8]) -> Option<usize> {
     content.split(|b| !is_payload(b)).map(<[u8]>::len).max()
 }
 
+/// Most hex digits in `\xNN` escapes or `0x` literals with only commas,
+/// whitespace or backslashes between them: a byte string or `xxd -i` array,
+/// which `longest_encoded_run` sees as many 3- or 4-character runs.
+fn longest_hex_literal_run(content: &[u8]) -> usize {
+    let (mut i, mut run, mut longest) = (0, 0, 0);
+    while i < content.len() {
+        match &content[i..] {
+            [b'\\' | b'0', b'x' | b'X', rest @ ..] => {
+                let len = rest
+                    .iter()
+                    .take_while(|b| b.is_ascii_hexdigit() || **b == b'_')
+                    .count();
+                run += rest[..len].iter().filter(|b| b.is_ascii_hexdigit()).count();
+                longest = longest.max(run);
+                // Skip a type suffix such as `u8` or `u32`.
+                let suffix = rest[len..]
+                    .iter()
+                    .take_while(|b| b.is_ascii_alphanumeric())
+                    .count();
+                i += 2 + len + suffix;
+            }
+            [b, ..] if matches!(b, b',' | b'\\') || b.is_ascii_whitespace() => i += 1,
+            _ => {
+                run = 0;
+                i += 1;
+            }
+        }
+    }
+    longest
+}
+
+/// Recognize bracketed, comma-separated decimal bytes in source or JSON.
+fn longest_decimal_byte_array(content: &[u8]) -> usize {
+    content
+        .split(|&byte| byte == b'[')
+        .skip(1)
+        .filter_map(|tail| {
+            let close = tail.iter().position(|&byte| byte == b']')?;
+            let array = tail[..close].trim_ascii();
+            let values = array.strip_suffix(b",").unwrap_or(array);
+            let mut count = 0;
+            for value in values.split(|&byte| byte == b',') {
+                let value = value.trim_ascii();
+                let digits = value
+                    .strip_suffix(b"_u8")
+                    .or_else(|| value.strip_suffix(b"u8"))
+                    .unwrap_or(value);
+                if !digits.iter().all(u8::is_ascii_digit)
+                    || std::str::from_utf8(digits).ok()?.parse::<u8>().is_err()
+                {
+                    return None;
+                }
+                count += 1;
+            }
+            Some(count)
+        })
+        .max()
+        .unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::check;
+    use super::{MAX_DECIMAL_BYTES, MAX_FILE_SIZE, check};
 
     /// Enforces the policy wherever tests run, even in clones without the hook.
     #[test]
@@ -199,6 +282,17 @@ mod tests {
     }
 
     #[test]
+    fn allowed_text_paths_keep_the_content_checks() {
+        let svg = br#"<svg xmlns="http://www.w3.org/2000/svg"/>"#;
+        for path in super::ALLOWED_TEXT_PATHS {
+            assert!(check(path, b"original documentation").is_empty());
+            assert!(!check(path, b"DDS \0").is_empty());
+        }
+        assert!(!check("docs/charts/profile-frame-rate.svg", svg).is_empty());
+        assert!(!check("docs/unrelated.js", b"let data = 0;").is_empty());
+    }
+
+    #[test]
     fn rejects_game_like_files() {
         assert!(!check("assets/tex.dds", b"DDS \x7c\0\0\0").is_empty());
         assert!(
@@ -209,9 +303,16 @@ mod tests {
             !check("data.bin", b"hello").is_empty(),
             "extension not allowed"
         );
-        assert!(
-            !check("a.rs", &vec![b'a'; 600 * 1024]).is_empty(),
-            "too big"
+    }
+
+    #[test]
+    fn file_size_is_checked_independently_of_embedded_data() {
+        let mut content = vec![b' '; MAX_FILE_SIZE];
+        assert!(check("a.rs", &content).is_empty());
+        content.push(b' ');
+        assert_eq!(
+            check("a.rs", &content),
+            [format!("{} bytes exceeds the {MAX_FILE_SIZE}-byte limit", content.len())]
         );
     }
 
@@ -219,5 +320,60 @@ mod tests {
     fn rejects_data_smuggled_into_text() {
         let blob = format!("const DATA: &str = \"{}\";", "A1".repeat(400));
         assert!(!check("src/blob.rs", blob.as_bytes()).is_empty());
+    }
+
+    /// Synthetic bytes, never game data.
+    fn synthetic(n: u32) -> impl Iterator<Item = u32> {
+        (0..n).map(|i| (i * 37 + 11) % 256)
+    }
+
+    #[test]
+    fn rejects_data_smuggled_as_an_escaped_byte_string() {
+        // 4096 bytes as one unbroken `\xNN` hex run, the shape a byte-string
+        // literal of copied data takes.
+        let esc: String = synthetic(4096).map(|b| format!("\\x{b:02x}")).collect();
+        let src = format!("pub const DATA: &[u8] = b\"{esc}\";\n");
+        assert!(
+            !check("src/data.rs", src.as_bytes()).is_empty(),
+            "{} bytes of \\x-escaped hex passed",
+            src.len()
+        );
+    }
+
+    #[test]
+    fn rejects_data_smuggled_as_a_hex_byte_array() {
+        // `xxd -i` style: 4096 bytes as hex literals.
+        let lits: Vec<String> = synthetic(4096).map(|b| format!("0x{b:02x}")).collect();
+        let src = format!("pub const DATA: [u8; 4096] = [{}];\n", lits.join(", "));
+        assert!(
+            !check("src/data.rs", src.as_bytes()).is_empty(),
+            "{} bytes of hex array passed",
+            src.len()
+        );
+        // A short constant table, like the 16-entry ones in the tree, stays legal.
+        let table: Vec<String> = synthetic(16).map(|w| format!("0x{w:08x}_u32")).collect();
+        let src = format!(
+            "const T: [u32; 16] = [\n    {},\n];\n",
+            table.join(",\n    ")
+        );
+        assert!(check("src/table.rs", src.as_bytes()).is_empty());
+    }
+
+    #[test]
+    fn rejects_data_smuggled_as_a_decimal_byte_array() {
+        let values: Vec<String> = synthetic(MAX_DECIMAL_BYTES as u32 + 1)
+            .map(|byte| byte.to_string())
+            .collect();
+        let short = format!("[{}]", values[..MAX_DECIMAL_BYTES].join(", "));
+        assert!(check("table.json", short.as_bytes()).is_empty());
+
+        let data = format!("const DATA: &[u8] = &[{}u8,\n];\n", values.join("_u8, "));
+        assert_eq!(
+            check("src/data.rs", data.as_bytes()),
+            [format!("{} decimal bytes in one array (embedded data?)", values.len())]
+        );
+
+        let statement = format!("[{}]; [0, 1]", values[..MAX_DECIMAL_BYTES].join(", "));
+        assert!(check("src/table.rs", statement.as_bytes()).is_empty());
     }
 }

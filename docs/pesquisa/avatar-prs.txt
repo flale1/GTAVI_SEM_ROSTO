@@ -1,0 +1,96 @@
+﻿#183 [OPEN] feanorsun | Document slow asset loading from mechanical hard drives
+#181 [OPEN] xywantstolieflat | Prompt for the executable path in the PowerShell launch example
+#180 [OPEN] Vladimir-Human | victory-gpu: size-tiered card-buffer headroom and fence-safe LRU demotion
+#179 [OPEN] a-to-z | GPU: RDNA4 hosts leave the reuse clean-up pass out by default (amdxc64.dll fault at startup)
+#178 [OPEN] stritphatographir | GPU: keep descriptor fallback scans outside marked ranges
+#177 [OPEN] amine23012004 | Shaders: trace descriptors under the access's EXEC guard, not just its block
+#176 [OPEN] ri995410-art | Make -Safe use relay stage 1 and no card steps, and warn when DREDplay.ps1: set VICTORY_RELAY=1 and VICTORY_CARD_STEPS=0 in -Safe, warn on DRED without diagnostics (#25) la…
+#175 [OPEN] ri995410-art | Count a shader-cache hit from this call's flag, not the shared miss counter (#32)
+#173 [OPEN] HamudL | Shaders: retire VICTORY_FIRSTLANE_OWN, first-lane reads only of values shown alike (#101)
+#171 [OPEN] amine23012004 | Warm-up: each shader's "translated now" comes from its own call (#32)
+#170 [OPEN] amine23012004 | Runs leave out the pipelines victory warm found to crash the driver (#60)
+#169 [OPEN] amine23012004 | CI: clippy clean and the depth bounds test on WARP, so main's checks can pass
+#167 [CLOSED] a-to-z | GPU: serialize driver pipeline compilation on AMD to prevent amdxc64.dll crash
+#166 [OPEN] Beqren | Proton/vkd3d-proton: bounded wait for once-only compute dispatches (heads without skin); the pipeline library with a null blob (same as #151)
+#165 [OPEN] Calvix2k | GPU: the executable exports the Agility runtime, so Windows 10 gets shader model 6.6
+#164 [OPEN] JoeY54 | Pipeline workers: opt-in low-memory mode keeps the slow-build limit at first use (#56)
+#162 [OPEN] jtrudeau1530 | Pipelines: recover when a host compile thread dies (VICTORY_PIPE_FIX=1)
+#161 [OPEN] spatsariya | Upstream sync test
+#160 [OPEN] spatsariya | Document RTX 3060 hybrid test configuration and observed progress
+#158 [OPEN] justinsane532 | Launch settings and a guide for an RTX 5080, Ryzen 9 9950X3D, 32 GB PC
+#157 [OPEN] Mustafaiq1998x | test(gpu): validate descriptor copies through shader execution
+#155 [OPEN] spatsariya | Port DexNom Wave64 mask recovery fix (76749ce)
+#153 [OPEN] mavis140 | Input: the mouse as the keyboard pad's right stick and triggers, with a PC key layout (VICTORY_MOUSE=1, off by default)
+#152 [OPEN] gomeaw | Reuse group barriers across Wave32 LDS reads
+#151 [OPEN] gomeaw | Keep the D3D12 pipeline cache on Proton
+#150 [OPEN] gomeaw | Track pending texture-to-buffer readbacks
+#149 [OPEN] feanorsun | Keep the presenter windowed when Alt+Enter is pressed
+#148 [OPEN] gomeaw | Validate overlapping GPU readback by default
+#147 [MERGED] Jrjy3 | Our threads prefer the big-cache cores on dual-CCD X3D Ryzens (VICTORY_CACHE_CORES)
+#144 [MERGED] gomeaw | Trace shader and driver work on pipeline workers
+#142 [OPEN] gomeaw | Translate BVH prefix scans on wave32 GPUs
+#141 [OPEN] mattkajorinc | release: thin LTO and one codegen unit for the compute-bound translator
+#140 [MERGED] mattkajorinc | Fix workspace Clippy -D warnings failures across CI targets
+#139 [MERGED] feanorsun | Honor both host wave override names in translate and translate --warm
+#137 [MERGED] feanorsun | Report diagnostic settings discarded by play.ps1
+#134 [OPEN] YOGESH9139 | Laptop and 8 GB NVIDIA: Series S by -Light, wave64 LDS programs in wa…
+#132 [MERGED] feanorsun | Distinguish named and ordinal imports in census missing reports
+#131 [OPEN] HrHd | Key lines from a file (VICTORY_KEYS_LIVE) and render-scale viewports
+#130 [MERGED] feanorsun | Correct the required switches for three opt-in upcheck tests
+#129 [CLOSED] Beqren | Linux/Proton (RADV): six compute pipelines that never finish (280 ms -> 53 ms a frame), heads, faces, GPU faults: all Wine-only
+#128 [MERGED] feanorsun | Report warm worker startup failures without marking pipelines as bad
+#127 [MERGED] feanorsun | Run default and diagnostics tests independently of Clippy
+#126 [OPEN] ESAT586 | GPU: allow memory fault budget to recover per frame and exempt title buffers (#102)
+#125 [OPEN] ESAT586 | GPU: cap cumulative wait per pipeline across frames and guard worker panics (#73)
+#123 [MERGED] feanorsun | Report storage quota errors when save usage cannot be read
+#121 [MERGED] ESAT586 | GPU: back host sampler heaps with 2,048 slots and reserve slot 2,047 as null sentinel
+#120 [MERGED] ESAT586 | GPU tests: fall back to 1,000,000 view descriptors in replay_big on capped adapters (#116)
+#119 [OPEN] ESAT586 | GPU: scale texture pool spares() by remaining DXGI VRAM headroom (#94)
+#117 [MERGED] feanorsun | Report file scan outcomes in shader-info and shaders
+#114 [OPEN] secure-silicon | Faces move: d16 accesses ask for the kind of a view in a table too; victory replay --bytes
+#109 [OPEN] rivaldodev | Shaders: guard divergent single-console-wave barriers on narrow-wave (NVIDIA) GPUs
+#108 [OPEN] SousaTrashBin | Loop limits of their own for named shaders (grid march 39f0e9: 12.3 -> 0.4 ms)
+#107 [OPEN] SousaTrashBin | Read placed R9G9B9E5 views from the R32_UINT texture itself (no alias copies)
+#106 [MERGED] SousaTrashBin | Timing runs: the card's time by kind of list
+#105 [OPEN] SousaTrashBin | Card steps: read fills through placed copies, gather reads, bound the pool
+#104 [MERGED] Yoshi-233 | Decode packed 16-bit BGR targets in diagnostic captures
+#103 [CLOSED] rivaldodev | NVIDIA wave32, capped view heap, present compose, and HUD improvements
+#100 [OPEN] kalijerry | Open the window at 1280x720 by default (VICTORY_WINDOW_MAX_*)
+#98 [OPEN] Joly0 | Streaming stores for the big copies of the preparing thread (snapshots, sends to card copies, refreshes)
+#97 [OPEN] kalijerry | Placed texture UAVs: land writes on the title resource, not a stand-in
+#96 [OPEN] kalijerry | Search free runs in eight shards, best fit, and size the pool for a capped heap
+#93 [CLOSED] LuisFilipeZM | RTX 4070: a start script with a 1080p display mode and the log in a f…
+#92 [OPEN] TheHoracio | Run on a 16 GB PC: windows on the card, relief on out-of-memory, idle lists by memory
+#90 [MERGED] sharan104 | Docs: switches as the code reads them, and an xtask check for dead names (#49)
+#89 [MERGED] sharan104 | VICTORY_WRITE_SITES: refuse a file inside the source tree (#33)
+#88 [CLOSED] sharan104 | Pipeline book: keep a batch that failed to write; flush at the end and on a GPU failure (#41)
+#87 [CLOSED] MichaelSmithAI | Shaders: fix LOD queries on array textures
+#82 [MERGED] sawetco | Translate tiled cascade shadows exactly on wave32 GPUs
+#81 [OPEN] Pavl3000 | wave64: never emit a barrier a group cannot reach, and cover the whole group in the wave-wide decision
+#78 [MERGED] feanorsun | Drop the invalid play.ps1 skip default and fail on missing executables
+#77 [MERGED] Adika713 | GPU: opt-in system-RAM budget for idle windows
+#72 [OPEN] godsfathermixtape | victory-gpu: fence-tracked LRU VRAM GC and upload buffer pooling
+#69 [MERGED] Adika713 | GPU: add optional memory category log
+#68 [OPEN] zocram4cc | GPU: keep a title guard page inside a range; change guards in runs
+#66 [MERGED] Mumogg | Shaders: count threads of wave64 builder programs on 32-lane hosts (NVIDIA)
+#63 [MERGED] Yoshi-233 | Retry incomplete pipeline book writes and flush on orderly exit
+#58 [OPEN] battledogegames-design | gpu: select direct-heap root-signature flags from shader features
+#55 [OPEN] tightfall | Buffer record counts from the host's table, not a size query (AMD RDNA 4 compiler crash)
+#53 [OPEN] AwkGrep256 | AMD FSR + Frame Generation 3 / 4.0.2, and the RX 9070 XT compiler-crash guard
+#48 [OPEN] gomeaw | Reclaim dynamic descriptor ranges at GPU completion
+#47 [OPEN] gomeaw | Search free ranges when allocating dynamic descriptor tables
+#42 [OPEN] gomeaw | Give render and depth descriptors private slots during threaded recording
+#39 [MERGED] FictionHub | GPU: state the DRED stop command as the first uncompleted op (#22)
+#28 [CLOSED] SAZLEIB | fix(victory-gpu): fix shader cache hit tracking, warm-bad pipeline skip, flush rollback and VICTORY_LATE_WAITS
+#24 [MERGED] UwUCammie | Skip unrelated buffer slots in each spread heap scan
+#23 [MERGED] gomeaw | Keep structured buffer reads raw on heaps without descriptor twins
+#20 [OPEN] Abdellah-Khanani | GPU: Add mesh-to-compute fallback for RDNA1
+#18 [OPEN] gomeaw | Assign unique compute thread IDs on tiled wave32 GPUs
+#17 [MERGED] UwUCammie | Count a frame only after DXGI accepts the present
+#14 [MERGED] zocram4cc | copies of title memory: a guard page fails the copy and stays a guard page
+#10 [OPEN] gomeaw | Split wide indirect dispatches on 32-lane GPUs
+#9 [MERGED] battledogegames-design | replay: defer clamp scratch copy until split transition completes
+#7 [MERGED] gomeaw | Share GPU selection between runtime and shader validation
+#5 [MERGED] gomeaw | Fix resource-state and binding errors in the replay fixture
+#4 [MERGED] gomeaw | Shaders: run LDS flag regions on 32-lane GPUs
+#2 [CLOSED] tudorek12345 | Revise README for project clarity and updates

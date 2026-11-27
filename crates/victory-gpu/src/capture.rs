@@ -178,6 +178,166 @@ fn save_as(name: &str, width: u32, height: u32, pitch: usize, bgra: bool, rows: 
             }
         }
     }
+    write_aside(folder.join(format!("{name}.png")), w, h, raw);
+}
+
+/// A picture to pack and write: its file, width, height and filtered rows.
+type Picture = (PathBuf, u32, u32, Vec<u8>);
+
+/// A thread that takes pictures from a bounded line, and what is needed to
+/// end it with nothing left behind ([`Aside::finish`]).
+struct Aside {
+    line: std::sync::mpsc::SyncSender<Picture>,
+    /// Let go by the thread when the line is closed and empty and the last
+    /// picture is done.
+    done: std::sync::mpsc::Receiver<()>,
+    /// Pictures in the line or being worked on.
+    waiting: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl Aside {
+    /// A thread that hands each picture of its line to `work`, or none if
+    /// the thread does not start.
+    fn start(mut work: impl FnMut(Picture) + Send + 'static) -> Option<Self> {
+        use std::sync::atomic::Ordering::AcqRel;
+        let (line, pictures) = std::sync::mpsc::sync_channel::<Picture>(16);
+        let (ended, done) = std::sync::mpsc::channel::<()>();
+        let waiting = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let left = waiting.clone();
+        std::thread::Builder::new()
+            .name("victory-capture".to_owned())
+            .spawn(move || {
+                for picture in pictures {
+                    work(picture);
+                    left.fetch_sub(1, AcqRel);
+                }
+                drop(ended);
+            })
+            .ok()
+            .map(|_| Aside { line, done, waiting })
+    }
+
+    /// Puts a picture in the line, or gives it back if the line is full (the
+    /// disk is slower than the frames) or the thread is gone.
+    fn give(&self, picture: Picture) -> Result<(), Picture> {
+        use std::sync::atomic::Ordering::AcqRel;
+        use std::sync::mpsc::TrySendError;
+        self.waiting.fetch_add(1, AcqRel);
+        self.line.try_send(picture).map_err(|e| {
+            self.waiting.fetch_sub(1, AcqRel);
+            match e {
+                TrySendError::Full(picture) | TrySendError::Disconnected(picture) => picture,
+            }
+        })
+    }
+
+    /// Closes the line and waits, `bound` at most, until the thread has
+    /// done every picture that was in it: how many it has not. (Not for
+    /// the thread's own end: a thread ends under the loader's lock, which
+    /// the thread that ends the process may hold.)
+    fn finish(self, bound: std::time::Duration) -> usize {
+        let Aside { line, done, waiting } = self;
+        drop(line);
+        // Nothing is ever sent: the wait ends when the thread lets go of its
+        // end, or at the bound.
+        let _ = done.recv_timeout(bound);
+        waiting.load(std::sync::atomic::Ordering::Acquire)
+    }
+}
+
+/// Where pictures go to be packed and written.
+enum Line {
+    /// No picture yet.
+    Unused,
+    Aside(Aside),
+    /// On the caller: the thread did not start, or the process is ending
+    /// ([`finish`]).
+    Caller,
+}
+
+static LINE: std::sync::Mutex<Line> = std::sync::Mutex::new(Line::Unused);
+
+/// Packs and writes a picture on a thread of its own: whether it went
+/// there. The caller is the thread that prepares the submissions (a present
+/// stands in its line), the one a frame waits for: with
+/// `VICTORY_CAPTURE_WORLD` (every 8th frame) packing took 23% of its samples
+/// (a profile of the Series S prison scene at 22 fps), in the very runs the
+/// pictures are there to judge. What is waiting when the process ends is
+/// written by [`finish`].
+fn write_aside(path: PathBuf, w: u32, h: u32, raw: Vec<u8>) -> bool {
+    let picture = (path, w, h, raw);
+    let given = {
+        let mut line = LINE.lock().unwrap_or_else(|e| e.into_inner());
+        if matches!(*line, Line::Unused) {
+            *line = Aside::start(|(path, w, h, raw)| write(&path, w, h, &raw)).map_or(Line::Caller, Line::Aside);
+        }
+        match &*line {
+            Line::Aside(aside) => aside.give(picture),
+            _ => Err(picture),
+        }
+    };
+    // No thread, or the line is full: here, as before.
+    match given {
+        Ok(()) => true,
+        Err((path, w, h, raw)) => {
+            write(&path, w, h, &raw);
+            false
+        }
+    }
+}
+
+/// How long the end of the process waits for the pictures in the line: a
+/// disk that does not answer must not keep the process.
+const FINISH_BOUND: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// The process is ending: the pictures in the line are written before this
+/// returns, or [`FINISH_BOUND`] has passed (logged). A picture saved after
+/// this is written by its caller.
+pub(crate) fn finish() {
+    // Window close and title exit may overlap. Both wait for one bounded drain.
+    static DRAIN: std::sync::Once = std::sync::Once::new();
+    DRAIN.call_once(|| {
+        let left = finish_within(FINISH_BOUND);
+        if left != 0 {
+            tracing::warn!(
+                left,
+                seconds = FINISH_BOUND.as_secs(),
+                "capture pictures were still to be written when the process ended"
+            );
+        }
+    });
+}
+
+/// [`finish`] with its bound: how many pictures were not written in time.
+fn finish_within(bound: std::time::Duration) -> usize {
+    let line = std::mem::replace(&mut *LINE.lock().unwrap_or_else(|e| e.into_inner()), Line::Caller);
+    match line {
+        Line::Aside(aside) => aside.finish(bound),
+        Line::Unused | Line::Caller => 0,
+    }
+}
+
+fn write(path: &std::path::Path, w: u32, h: u32, raw: &[u8]) {
+    let png = encode(w, h, raw);
+    match std::fs::write(path, png) {
+        Ok(()) => tracing::info!(path = %path.display(), "frame saved"),
+        Err(e) => tracing::warn!(error = %e, path = %path.display(), "frame not saved"),
+    }
+}
+
+/// A PNG of `width * height` pixels of 8-bit RGB.
+pub(crate) fn png(width: u32, height: u32, rgb: &[u8]) -> Vec<u8> {
+    let row = width as usize * 3;
+    let mut raw = Vec::with_capacity((row + 1) * height as usize);
+    for line in rgb.chunks_exact(row.max(1)) {
+        raw.push(0);
+        raw.extend_from_slice(line);
+    }
+    encode(width, height, &raw)
+}
+
+/// A PNG of rows of RGB, each behind its filter byte.
+fn encode(w: u32, h: u32, raw: &[u8]) -> Vec<u8> {
     let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
     let mut header = Vec::new();
     header.extend(w.to_be_bytes());
@@ -185,15 +345,11 @@ fn save_as(name: &str, width: u32, height: u32, pitch: usize, bgra: bool, rows: 
     header.extend([8, 2, 0, 0, 0]); // 8-bit RGB
     chunk(&mut png, b"IHDR", &header);
     let mut compressed = vec![0u8; zlib_rs::compress_bound(raw.len())];
-    let (idat, rc) = zlib_rs::compress_slice(&mut compressed, &raw, zlib_rs::DeflateConfig::new(3));
+    let (idat, rc) = zlib_rs::compress_slice(&mut compressed, raw, zlib_rs::DeflateConfig::new(3));
     debug_assert_eq!(rc, zlib_rs::ReturnCode::Ok);
     chunk(&mut png, b"IDAT", idat);
     chunk(&mut png, b"IEND", &[]);
-    let path = folder.join(format!("{name}.png"));
-    match std::fs::write(&path, png) {
-        Ok(()) => tracing::info!(path = %path.display(), "frame saved"),
-        Err(e) => tracing::warn!(error = %e, path = %path.display(), "frame not saved"),
-    }
+    png
 }
 
 fn chunk(png: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
@@ -205,13 +361,28 @@ fn chunk(png: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
     png.extend(crc.to_be_bytes());
 }
 
+/// The check values of the 256 bytes: a byte a step instead of a bit (the
+/// bit-by-bit loop was 5% of the thread that saved a picture).
+const CRC_TABLE: [u32; 256] = {
+    let mut table = [0u32; 256];
+    let mut i = 0;
+    while i < 256 {
+        let mut crc = i as u32;
+        let mut bit = 0;
+        while bit < 8 {
+            crc = (crc >> 1) ^ (0xedb8_8320 & (crc & 1).wrapping_neg());
+            bit += 1;
+        }
+        table[i] = crc;
+        i += 1;
+    }
+    table
+};
+
 fn crc32(bytes: &[u8]) -> u32 {
     let mut crc = !0u32;
     for &b in bytes {
-        crc ^= u32::from(b);
-        for _ in 0..8 {
-            crc = (crc >> 1) ^ (0xedb8_8320 & (crc & 1).wrapping_neg());
-        }
+        crc = CRC_TABLE[((crc ^ u32::from(b)) & 0xff) as usize] ^ (crc >> 8);
     }
     !crc
 }
@@ -341,7 +512,7 @@ static TARGETS: std::sync::Mutex<Vec<(usize, std::sync::Arc<crate::resource::Hos
 
 fn dump_on() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| folder().is_some() && std::env::var_os("VICTORY_DUMP_TARGETS").is_some())
+    *ON.get_or_init(|| folder().is_some() && crate::switch::on("VICTORY_DUMP_TARGETS"))
 }
 
 /// Notes a title texture the frame being built renders to or writes.
@@ -540,10 +711,10 @@ fn small_float(bits: u32, man: u32) -> f32 {
     }
 }
 
-/// Rows of a host format as 8-bit RGBA: 8-bit color as is, everything else
-/// as channel values scaled so the largest finite one is white (single
-/// channels: lowest black, highest white, as grey). `None` for formats not
-/// handled.
+/// Converts host-format rows to opaque 8-bit RGBA for the RGB dump. Byte
+/// colors and packed 16-bit BGR use their full channel range. Other formats
+/// scale to the highest finite value, with single channels shown in grey
+/// from their lowest to highest value. Returns `None` for unhandled formats.
 fn to_rgba(format: u32, w: usize, h: usize, pitch: usize, rows: &[u8]) -> Option<Vec<u8>> {
     let mut out = Vec::with_capacity(w * h * 4);
     let px = |x: usize, y: usize, n: usize| &rows[y * pitch + x * n..][..n];
@@ -567,6 +738,30 @@ fn to_rgba(format: u32, w: usize, h: usize, pitch: usize, rows: &[u8]) -> Option
                 for x in 0..w {
                     let p = px(x, y, 4);
                     out.extend([p[2], p[1], p[0], 255]);
+                }
+            }
+            return Some(out);
+        }
+        // B5G6R5, B5G5R5A1 and B4G4R4A4 store blue in the low bits.
+        85 | 86 | 115 => {
+            let (rb_bits, green_bits) = match format {
+                85 => (5, 6),
+                86 => (5, 5),
+                _ => (4, 4),
+            };
+            let unorm8 = |value: u16, bits: u32| {
+                let max = (1u16 << bits) - 1;
+                (((value & max) * 255 + max / 2) / max) as u8
+            };
+            for y in 0..h {
+                for x in 0..w {
+                    let word = u16_at(px(x, y, 2), 0);
+                    out.extend([
+                        unorm8(word >> (rb_bits + green_bits), rb_bits),
+                        unorm8(word >> rb_bits, green_bits),
+                        unorm8(word, rb_bits),
+                        255,
+                    ]);
                 }
             }
             return Some(out);
@@ -829,6 +1024,30 @@ mod tests {
     #[test]
     fn crc_matches_the_png_check_value() {
         assert_eq!(super::crc32(b"IEND"), 0xae42_6082);
+        // The check value every CRC-32 implementation is tested with.
+        assert_eq!(super::crc32(b"123456789"), 0xcbf4_3926);
+    }
+
+    #[test]
+    fn packed_bgr_targets_preserve_color_and_skip_row_padding() {
+        // Each 2x2 target has red, green, blue and a mixed color. The first
+        // row has a padding word, and alpha bits do not affect the RGB dump.
+        for (format, words, mixed) in [
+            (85, [0xf800u16, 0x07e0, 0x001f, 0x8408], [132, 130, 66, 255]),
+            (86, [0x7c00, 0x03e0, 0x801f, 0xc208], [132, 132, 66, 255]),
+            (115, [0x0f00, 0x00f0, 0xf00f, 0xf841], [136, 68, 17, 255]),
+        ] {
+            let [red, green, blue, blend] = words;
+            let rows = [red, green, 0xcafe, blue, blend]
+                .map(u16::to_le_bytes)
+                .concat();
+            let expected = [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255], mixed].concat();
+            assert_eq!(
+                super::to_rgba(format, 2, 2, 6, &rows),
+                Some(expected),
+                "format {format}"
+            );
+        }
     }
 
     /// R16G16B16A16_UNORM is integers, not half floats; 89 is 10:10:10:2,
@@ -843,5 +1062,181 @@ mod tests {
         assert_eq!(super::to_rgba(89, 1, 1, 4, &xr), Some(vec![255, 127, 0, 255]));
         // B8G8R8A8 still swaps to RGBA.
         assert_eq!(super::to_rgba(87, 1, 1, 4, &[1, 2, 3, 4]), Some(vec![3, 2, 1, 255]));
+    }
+    /// A CRC-32 made a bit at a time: not the table the writer uses.
+    fn crc_by_bits(bytes: &[u8]) -> u32 {
+        let mut crc = !0u32;
+        for &b in bytes {
+            crc ^= u32::from(b);
+            for _ in 0..8 {
+                crc = (crc >> 1) ^ (0xedb8_8320 & (crc & 1).wrapping_neg());
+            }
+        }
+        !crc
+    }
+
+    /// Reads a PNG as a decoder would: the signature, every chunk's length
+    /// and check value, the header's fields, the packed rows unpacked, the
+    /// end chunk last. Gives the size and the rows, each behind its filter
+    /// byte.
+    fn unpacked(png: &[u8]) -> (u32, u32, Vec<u8>) {
+        assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n", "signature");
+        let (mut at, mut header, mut packed, mut ended) = (8, None, Vec::new(), false);
+        while at < png.len() {
+            assert!(!ended, "a chunk behind the end chunk");
+            let len = u32::from_be_bytes(png[at..at + 4].try_into().unwrap()) as usize;
+            let kind = &png[at + 4..at + 8];
+            let data = &png[at + 8..at + 8 + len];
+            let crc = u32::from_be_bytes(png[at + 8 + len..at + 12 + len].try_into().unwrap());
+            assert_eq!(crc, crc_by_bits(&png[at + 4..at + 8 + len]), "check value of {kind:?}");
+            match kind {
+                b"IHDR" => {
+                    assert!(header.is_none() && at == 8, "the header comes first, once");
+                    assert_eq!(len, 13);
+                    // 8 bits a channel, RGB, deflate, filter method 0, not interlaced.
+                    assert_eq!(&data[8..], &[8, 2, 0, 0, 0]);
+                    header = Some((
+                        u32::from_be_bytes(data[..4].try_into().unwrap()),
+                        u32::from_be_bytes(data[4..8].try_into().unwrap()),
+                    ));
+                }
+                b"IDAT" => packed.extend_from_slice(data),
+                b"IEND" => {
+                    assert_eq!(len, 0);
+                    ended = true;
+                }
+                other => panic!("an unexpected chunk {other:?}"),
+            }
+            at += 12 + len;
+        }
+        assert!(ended, "no end chunk");
+        let (w, h) = header.expect("no header");
+        let mut rows = vec![0u8; (w as usize * 3 + 1) * h as usize];
+        let (out, rc) = zlib_rs::decompress_slice(&mut rows, &packed, zlib_rs::InflateConfig::default());
+        assert_eq!(rc, zlib_rs::ReturnCode::Ok, "the packed rows do not unpack");
+        assert_eq!(out.len(), (w as usize * 3 + 1) * h as usize, "rows for the header's size");
+        assert!(rows.chunks_exact(w as usize * 3 + 1).all(|row| row[0] == 0), "filter type 0 in every row");
+        (w, h, rows)
+    }
+
+    /// Rows of a picture no two of which are alike, each behind its filter
+    /// byte, as `save_as` makes them.
+    fn rows(w: u32, h: u32, seed: u32) -> Vec<u8> {
+        let mut raw = Vec::new();
+        for y in 0..h {
+            raw.push(0);
+            for x in 0..w {
+                let v = (x * 7 + y * 13 + seed * 31).wrapping_mul(2_654_435_761);
+                raw.extend([(v >> 24) as u8, (v >> 16) as u8, (v >> 8) as u8]);
+            }
+        }
+        raw
+    }
+
+    /// Pictures handed to the capture thread are on disk, whole and valid,
+    /// when the end of the process has waited for it: through the process's
+    /// own line, as a frame's picture goes. (The one test that uses that
+    /// line: it is closed afterwards.)
+    #[test]
+    fn pictures_in_the_line_are_valid_png_files_when_finish_returns() {
+        use std::sync::mpsc::{RecvTimeoutError, channel, sync_channel};
+        use std::time::{Duration, Instant};
+
+        let dir = tempfile::tempdir().unwrap();
+        let (w, h) = (37, 21);
+        let (release, held) = std::sync::mpsc::channel::<()>();
+        let mut held = Some(held);
+        let worker = super::Aside::start(move |(path, w, h, raw)| {
+            if let Some(held) = held.take() {
+                let _ = held.recv();
+            }
+            super::write(&path, w, h, &raw);
+        })
+        .unwrap();
+        {
+            let mut line = super::LINE.lock().unwrap();
+            assert!(matches!(*line, super::Line::Unused));
+            *line = super::Line::Aside(worker);
+        }
+        let pictures: Vec<_> = (0..8).map(|i| (dir.path().join(format!("frame-{i}.png")), rows(w, h, i))).collect();
+        for (path, raw) in &pictures {
+            assert!(super::write_aside(path.clone(), w, h, raw.clone()), "the picture did not go to the thread");
+        }
+        std::thread::scope(|scope| {
+            scope.spawn(super::finish);
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while !matches!(*super::LINE.lock().unwrap(), super::Line::Caller) {
+                assert!(Instant::now() < deadline, "the first exit did not close the line");
+                std::thread::yield_now();
+            }
+
+            let (started, start) = sync_channel(0);
+            let (returned, done) = channel();
+            scope.spawn(move || {
+                started.send(()).unwrap();
+                super::finish();
+                returned.send(()).unwrap();
+            });
+            start.recv_timeout(Duration::from_secs(2)).unwrap();
+            let early = done.recv_timeout(Duration::from_millis(100));
+            drop(release);
+            assert_eq!(early, Err(RecvTimeoutError::Timeout), "the second exit bypassed the drain");
+            done.recv_timeout(Duration::from_secs(3)).unwrap();
+        });
+        for (path, raw) in &pictures {
+            let png = std::fs::read(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            assert_eq!(unpacked(&png), (w, h, raw.clone()), "{}", path.display());
+        }
+        // After that a picture is written by its caller, at once.
+        let late = dir.path().join("late.png");
+        assert!(!super::write_aside(late.clone(), w, h, rows(w, h, 99)));
+        assert_eq!(unpacked(&std::fs::read(&late).unwrap()), (w, h, rows(w, h, 99)));
+        assert_eq!(super::finish_within(std::time::Duration::ZERO), 0);
+    }
+
+    /// Closing the line does not drop what is in it: the thread works off
+    /// every picture that was waiting, in order, before the wait ends.
+    #[test]
+    fn a_closed_line_is_worked_off_before_the_wait_ends() {
+        let (open, gate) = std::sync::mpsc::channel::<()>();
+        let (seen, order) = std::sync::mpsc::channel::<u32>();
+        let mut first = true;
+        let aside = super::Aside::start(move |(_, n, _, _)| {
+            // The first picture waits: the others are still in the line when
+            // it is closed.
+            if std::mem::take(&mut first) {
+                let _ = gate.recv();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+            seen.send(n).unwrap();
+        })
+        .unwrap();
+        for n in 0..10 {
+            assert!(aside.give((std::path::PathBuf::new(), n, 0, Vec::new())).is_ok());
+        }
+        open.send(()).unwrap();
+        assert_eq!(aside.finish(std::time::Duration::from_secs(60)), 0);
+        assert_eq!(order.try_iter().collect::<Vec<_>>(), (0..10).collect::<Vec<_>>());
+    }
+
+    /// A thread that does not come back (a disk that does not answer) holds
+    /// the end of the process for the bound and no longer, and what it had
+    /// not written is counted.
+    #[test]
+    fn the_wait_for_the_line_is_bounded_and_counts_what_is_left() {
+        let (release, held) = std::sync::mpsc::channel::<()>();
+        let aside = super::Aside::start(move |_| {
+            let _ = held.recv();
+        })
+        .unwrap();
+        for _ in 0..3 {
+            assert!(aside.give((std::path::PathBuf::new(), 0, 0, Vec::new())).is_ok());
+        }
+        let started = std::time::Instant::now();
+        assert_eq!(aside.finish(std::time::Duration::from_millis(100)), 3);
+        let waited = started.elapsed();
+        assert!(waited >= std::time::Duration::from_millis(100), "{waited:?}");
+        assert!(waited < std::time::Duration::from_secs(20), "{waited:?}");
+        drop(release);
     }
 }
