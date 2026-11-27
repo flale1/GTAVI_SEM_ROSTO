@@ -76,7 +76,8 @@ O `Play-VIctory.cmd` e o `Preparar-Shaders.cmd` usam o mesmo `preset.cmd`, para 
 
 - `VICTORY_NAN_SCRUB=1`: valores inválidos dos shaders de pele viram 0 (ruído colorido nos rostos em NVIDIA).
 - `VICTORY_AMBIENT_AIR=0.5` e `VICTORY_AMBIENT_SETTLE=250,3`: menos névoa estourada e luz sem saltos. Se a névoa ainda estourar, teste `$env:VICTORY_AMBIENT_AIR = '0.25'`.
-- `VICTORY_PIPELINE_WAIT_MS=500` (era 10000): a abertura não congela esperando a placa criar pipelines novos. Algum objeto pode aparecer um instante depois.
+- `VICTORY_PIPELINE_WAIT_MS=24` (era 10000): a abertura não congela e o jogo fica mais liso enquanto a placa cria pipelines novos. Algum objeto pode aparecer um instante depois.
+- Do VIctory-8GB-v5 (fork do cool_fox, RTX 3070 Ti 8 GB): `VICTORY_CARD_BUFFERS_MB=2048` com `VICTORY_CARD_ROOM_FOR_TARGETS_MB=2304` (reserva de VRAM para os alvos de render) e, em CPU com 16 threads ou mais, `VICTORY_WIDE_SPIN=200`, `VICTORY_VIEW_THREADS=10` e `VICTORY_UNDER_THREADS=10`.
 
 Depois de atualizar, rode o `Preparar-Shaders.cmd` de novo.
 
