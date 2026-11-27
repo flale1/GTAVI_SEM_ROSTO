@@ -105,6 +105,7 @@ Nenhum dos dois aumenta o fps médio. Eles tiram os engasgos da primeira vez em 
 ## Shaders recusados e caça a bugs de shader
 
 - `VICTORY_WAVE_LOOSE_LDS=1` (ligado no preset): LDS aproximado em grupos de 32 threads, port de [Corgansm/victory-corgi](https://github.com/Corgansm/victory-corgi) `53e7682`. Faz funcionar na NVIDIA 5 de 9 shaders de cálculo que a placa recusava. Muda a tradução: rode o `Preparar-Shaders.cmd` de novo. Se piorar algo, desligue com `$env:VICTORY_WAVE_LOOSE_LDS = '0'` e prepare os shaders de novo.
+- `VICTORY_WAVE_WIDE=1` (ligado no preset): um grupo de 64 threads do console roda como duas waves de 32 da NVIDIA, com barreiras. Os shaders de cálculo que ficavam presos em 64 e eram recusados (água em blocos pretos que mudam ao virar a câmera) passam a rodar. Pode deixar manchas escuras na água e, em testes de outro fork, já reiniciou o driver de vídeo. Se a tela travar, desligue com `$env:VICTORY_WAVE_WIDE = '0'` e rode o `Preparar-Shaders.cmd` de novo.
 - `Cacar-Shader.ps1`: acha por busca binária qual shader causa um bug visual.
   1. Jogue uma vez normalmente até o lugar do bug. Isso grava a lista de shaders usados.
   2. Rode `.\Cacar-Shader.ps1`. A cada rodada ele desliga metade dos shaders e abre o jogo. Vá até o bug, feche o jogo e responda `s` ou `n`.
