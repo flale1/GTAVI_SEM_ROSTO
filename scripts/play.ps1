@@ -182,6 +182,9 @@ if ($Machine -eq '4060ti') {
     $settings.VICTORY_PIPELINE_BOOK = '1'
     $settings.VICTORY_CARD_BUFFERS_MB = '1300'; $settings.VICTORY_WINDOWS_BAR_MB = '2048'
     $settings.VICTORY_WORKING_SET_MB = '16000'
+    # 1080p out whatever the title's settings.xml asks (it had 3840x2160: with DLSS quality the
+    # title then drew 2560x1440, too much for an 8 GB card). Override with -More VICTORY_OUTPUT.
+    $settings.VICTORY_OUTPUT = '1920x1080'
     if (-not $Safe) { $settings.VICTORY_MAP_THREADS = 'auto' }
 }
 # -Safe leaves out every way still on trial, and the newest faster ones.
