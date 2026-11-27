@@ -1,3 +1,13 @@
+3d045a33 2026-11-26 gomeaw
+    Check the final LDS flag from every lane on a 32-lane adapter
+f3aeee5a 2026-11-25 FrancescoGelosoEterea
+    Shaders: a lane-branch region that only raises an LDS flag runs as two host waves
+9253660e 2026-11-25 justrealyme
+    Shaders: first-lane reads of values alike in a console wave, under conditions alike in it
+dcb0b30e 2026-11-25 lcg007xd-c
+    Shaders: v_permlane16/v_permlanex16 ask for the console's lanes (#79)
+a837ba09 2026-11-26 VItoriaBr CEO (local)
+    Shaders: WAVE64-PROGRAM says the declared WaveSize and why 64-lane waves stay
 918577af 2026-11-26 VItoriaBr CEO (local)
     GPU: log the translation cache key once per run
 f9dff7e2 2026-11-26 VItoriaBr CEO (local)
