@@ -30,7 +30,7 @@ Extraia o zip dentro da pasta do seu dump (ao lado do `game_scarlett_master.exe`
    - **12 GB de VRAM ou mais**: 4 GB de buffers na placa.
    - O padrão é o **modo liso** (testado num RTX 5070 Ti): Series S, pouca RAM (`VICTORY_LOW_RAM=1`), texturas sem espera, passos na placa desligados (`VICTORY_CARD_STEPS=0`). Para mais detalhe, use o `Play-SeriesX.cmd` (chega a 38 GB de RAM; com limite de memória abaixo de 48 GB, aumente a paginação).
    - Se o limite for menor do que o perfil precisa (Series S: 32 GB, Series X: 48 GB), o `Play-VIctory.cmd` avisa. Para aumentar o arquivo de paginação: Exibir configurações avançadas do sistema → Desempenho → Configurações → Avançado → Memória virtual → Alterar → desmarque "Gerenciar automaticamente" → C: → Tamanho personalizado, inicial `32768` e máximo `49152` → Definir → reinicie.
-   - Com 12-16 GB de VRAM também dá para subir a resolução: `$env:VICTORY_RENDER_SCALE = '0.75'`.
+   - Imagem: saída 1920x1080 (`VICTORY_OUTPUT`) e escala de render 0,75 em placas de 8 GB ou 1,0 com 12 GB ou mais (`VICTORY_RENDER_SCALE`). No Series S, `VICTORY_AMBIENT_MAGENTA=1` tira a luz magenta errada (filtro do Belobug, usado no VIctory-8GB-v6). Se pesar, volte com `$env:VICTORY_RENDER_SCALE = '0.5'`.
 6. Se der bug, rode o diagnóstico. Ele grava o log completo e a memória, e gera um zip para enviar:
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\Diagnostico.ps1
@@ -42,6 +42,7 @@ Requisitos: Windows 10/11 x64, CPU com AVX2, placa Direct3D 12 com Shader Model 
 
 - Base: VIctory-8GB-v6 (renderiza bem em placas de 8 GB; os shaders de cálculo de 64 lanes sem forma de 32 deixam de ser usados, em vez de travar a placa).
 - Por cima: upscaler e escala de render, slots de descritor, rostos em NVIDIA, modo de pouca RAM, as correções de shader (água e lanes em waves de 32, descritores, permlane16, LDS aproximado), os diagnósticos e os shaders do avatarmanz novo. No dump, só 4 shaders de cálculo ficam de fora (eram 6 na v6 pura).
+- Sombras em cascata exatas na NVIDIA (port do Belobug `4fd34fd`, nosso `c4870fce`): sem os blocos pretos perto da câmera no Series S.
 - Memória: com `VICTORY_LOW_RAM=1` (já no preset) os blocos ociosos de textura caem de 4 GB para 512 MB. `VICTORY_MEM_LOG=1` grava no log, a cada 30 s, onde está a RAM.
 
 ## O que muda em relação ao avatarmanz 85d5641

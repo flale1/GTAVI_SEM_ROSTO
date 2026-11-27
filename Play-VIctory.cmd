@@ -16,6 +16,8 @@ set "runner=%~dp0victory.exe"
 call "%~dp0preset.cmd"
 rem VICTORY_LOW_RAM liga sozinho com 24 GB ou menos; VICTORY_LOW_RAM=0 desliga os cortes de RAM
 if not defined VICTORY_CONSOLE set "VICTORY_CONSOLE=series-s"
+rem Series S: luz magenta que o programa do titulo deixa conta como nenhuma (filtro do Belobug e942896, usado no VIctory-8GB-v6)
+if /i "%VICTORY_CONSOLE%"=="series-s" if not defined VICTORY_AMBIENT_MAGENTA set "VICTORY_AMBIENT_MAGENTA=1"
 echo Console: %VICTORY_CONSOLE%  (RAM %VICTORY_RAM_GB% GB, VRAM %VICTORY_VRAM_GB% GB, limite de memoria %VICTORY_COMMIT_GB% GB, buffers na placa %VICTORY_CARD_BUFFERS_MB% MB)
 set "need=32"
 if /i "%VICTORY_CONSOLE%"=="series-x" set "need=48"

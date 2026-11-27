@@ -1,3 +1,5 @@
+c4870fce 2026-11-26 sawetco
+    Shaders: translate tiled cascade shadows exactly on wave32 hosts
 caf17d2f 2026-11-27 VItoriaBr CEO (local)
     Pool: spare-limit tests pass the kept count
 ef501a65 2026-11-27 VItoriaBr CEO (local)

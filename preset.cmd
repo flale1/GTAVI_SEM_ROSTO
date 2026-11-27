@@ -36,7 +36,11 @@ if not defined VICTORY_SKIP_PIPELINES set "VICTORY_SKIP_PIPELINES=none"
 rem Series S em NVIDIA: compor o plano da interface, upscaler proprio, slots de descritor
 if not defined VICTORY_COMPOSE set "VICTORY_COMPOSE=1"
 if not defined VICTORY_OWN_UPSCALER set "VICTORY_OWN_UPSCALER=1"
-if not defined VICTORY_RENDER_SCALE set "VICTORY_RENDER_SCALE=0.5"
+rem imagem mais bonita: saida 1920x1080 e escala de render 0,75 (placas de 8 GB) ou 1,0 (12 GB ou mais);
+rem a placa fica quase ociosa (o gargalo e a CPU), entao custa pouco fps. Do VIctory-8GB-v6.
+if not defined VICTORY_OUTPUT set "VICTORY_OUTPUT=1920x1080"
+if %VICTORY_VRAM_GB% GEQ 12 if not defined VICTORY_RENDER_SCALE set "VICTORY_RENDER_SCALE=1.0"
+if not defined VICTORY_RENDER_SCALE set "VICTORY_RENDER_SCALE=0.75"
 if not defined VICTORY_DYNAMIC_SLOTS set "VICTORY_DYNAMIC_SLOTS=524288"
 if not defined VICTORY_BVH_MISS set "VICTORY_BVH_MISS=1"
 rem espera por pipeline novo por frame: 24 ms (do VIctory-8GB-v5, RTX 3070 Ti) = mais liso, algum objeto aparece um instante depois
