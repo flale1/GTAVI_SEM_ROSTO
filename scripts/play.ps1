@@ -5,6 +5,7 @@
 # -Windowed     a window instead of the whole screen (full screen is the default)
 # -NoPanel      without the performance panel (on by default, F3 hides it while playing)
 # -SkipShaders  start even when the shader cache is cold (otherwise every shader is translated first)
+# -EarlyPipelines  optional extra list of pipeline keys to prioritize when the game creates them
 # -Console      series-x (the default) or series-s: the console the title takes this PC for
 # -FrameGen     AMD frame generation
 # -Fsr / -Dlss  PC upscaling in Series S (quality, balanced or performance)
@@ -22,12 +23,14 @@
 # copy-back work, or -More @{VICTORY_THIN_THREADS='6'} for list translation.
 # Run it from a normal window, not as administrator: the driver then keeps its shader cache elsewhere.
 param(
-    [Parameter(Mandatory)][string]$Exe,
+    [Parameter(Mandatory, ParameterSetName='Project')][string]$Exe,
+    [Parameter(Mandatory, ParameterSetName='Portable')][string]$PortableExe,
     [switch]$Safe,
     [switch]$RayTracing,
     [switch]$Windowed,
     [switch]$NoPanel,
     [switch]$SkipShaders,
+    [string]$EarlyPipelines,
     [ValidateSet('series-x', 'series-s')][string]$Console = 'series-x',
     [switch]$FrameGen,
     [ValidateSet('quality', 'balanced', 'performance')][string]$Fsr,
@@ -35,9 +38,23 @@ param(
     [ValidateSet('quality', 'balanced', 'performance')][string]$Fsr4K,
     [ValidateSet('quality', 'balanced', 'performance')][string]$Dlss4K,
     [ValidateSet('diag', 'release')][string]$Build = 'diag',
-    [ValidateSet('auto', '7900xtx', '4070', '4070tisuper', '4090', '3060', 'laptop', '4060ti')][string]$Machine = 'auto',
+    [ValidateSet('auto', '7900xtx', '4070', '4070tisuper', '5070ti', '4090', '3060', 'laptop', '4060ti')][string]$Machine = 'auto',
     [hashtable]$More = @{}
 )
+if ($PortableExe) {
+    Add-Type -AssemblyName System.Windows.Forms
+    $picker = New-Object System.Windows.Forms.OpenFileDialog
+    try {
+        $picker.Title = 'VictoryBR - selecione o executavel da sua copia do jogo'
+        $picker.Filter = 'Executavel do jogo (*.exe)|*.exe'
+        if ($picker.ShowDialog() -ne 'OK') { exit 0 }
+        $Exe = $picker.FileName
+    } finally { $picker.Dispose() }
+    if ([IO.Path]::GetFullPath($Exe) -eq [IO.Path]::GetFullPath($PortableExe)) {
+        throw 'Selecione o executavel do jogo.'
+    }
+    $env:VICTORY_GAME_DIR = Split-Path -LiteralPath $Exe
+}
 $settings = @{
     VICTORY_TEXTURE_NO_WAIT = '1'; VICTORY_RELAY = '2'; VICTORY_WIDE_BACK = '1'; VICTORY_CARD_REHASH_RUNS = '1'
     VICTORY_JOIN_COPIES = '1'; VICTORY_INDIRECT_WINDOW = '1'; VICTORY_RELAY_COPY = '1'; VICTORY_CARD_STEPS = '2'
@@ -45,6 +62,10 @@ $settings = @{
     VICTORY_SHOW_AFTER = '1'; VICTORY_AMBIENT = '0.8'; VICTORY_D3D12_DRED = 'faults'
 }
 $ram = (Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue).TotalPhysicalMemory
+if ($EarlyPipelines) {
+    if (-not (Test-Path -LiteralPath $EarlyPipelines -PathType Leaf)) { throw "Missing pipeline list: $EarlyPipelines" }
+    $settings.VICTORY_EARLY_PIPELINE_LIST = (Resolve-Path -LiteralPath $EarlyPipelines).ProviderPath
+}
 $controllers = @(if ($Machine -in 'auto', '7900xtx') {
     Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue
 })
@@ -129,7 +150,7 @@ if ($Machine -eq '3060') {
     $settings.VICTORY_WINDOWS_BAR_MB = '3072'
     if (-not $Safe) { $settings.VICTORY_MAP_THREADS = 'auto' }
 }
-if ($Machine -eq '4070tisuper') {
+if ($Machine -in '4070tisuper', '5070ti') {
     # RTX 4070 Ti SUPER (16 GB, DXGI budget about 15.3 GB), Ryzen 7 9850X3D (eight cores), 32 GB.
     # The 4070 profile's threads and card budgets: doubling them (3 GB of buffer copies, 4 GB of
     # windows) took the card from 6.8 to 9.3 GB in the prison walk with the same frames (median
@@ -144,6 +165,12 @@ if ($Machine -eq '4070tisuper') {
         $settings.VICTORY_CARD_BUFFERS_MIN_KB = '64'; $settings.VICTORY_CARD_BUFFERS_MB = '1536'
         $settings.VICTORY_CARD_WINDOWS_MB = '1024'; $settings.VICTORY_WINDOWS_BAR_MB = '4096'
     }
+}
+if ($Machine -eq '5070ti') {
+    # Conservative starting point for 16 GB or larger RTX cards.
+    $settings.VICTORY_OUTPUT = '1920x1080'
+    $settings.VICTORY_PIPELINE_BOOK = '1'
+    if (-not $Safe) { $settings.VICTORY_PLACED_FILL_REDIRECT = '1' }
 }
 if ($Machine -eq 'laptop') {
     # i7-13700H, RTX 3050 6 GB Laptop GPU, 16 GB (docs/laptop-16gb.md); asked for explicitly,
@@ -193,7 +220,10 @@ if ($Machine -eq '4060ti') {
     $settings.VICTORY_DSTORAGE_IO = 'direct'; $settings.VICTORY_INPLACE = '2'
     $settings.VICTORY_WINDOW_KB = '64'; $settings.VICTORY_WINDOW_TAILS = '1'
     $settings.VICTORY_LEVELS_ON_DEMAND = '1'
-    if (-not $Safe) { $settings.VICTORY_MAP_THREADS = 'auto' }
+    if (-not $Safe) {
+        $settings.VICTORY_MAP_THREADS = 'auto'
+        $settings.VICTORY_PLACED_FILL_REDIRECT = '1'
+    }
 }
 # -Safe leaves out every way still on trial, and the newest faster ones.
 if ($Safe) {
@@ -228,7 +258,7 @@ if ($ram -and $ram -lt 60GB) {
     Write-Host ("Windows reports {0:N1} GiB of physical RAM. Keep a system-managed page file. See docs/measurements.md for measured Series S memory use." -f ($ram / 1GB))
 }
 
-$victory = Join-Path $PSScriptRoot "..\target\$Build\victory.exe"
+$victory = if ($PortableExe) { $PortableExe } else { Join-Path $PSScriptRoot "..\target\$Build\victory.exe" }
 if (-not (Test-Path -LiteralPath $victory -PathType Leaf)) { Write-Host "No $victory. Build it first (README.md)."; exit 1 }
 if (-not (Test-Path -LiteralPath $Exe -PathType Leaf)) { Write-Host "No $Exe."; exit 1 }
 $victory = (Resolve-Path -LiteralPath $victory).Path
@@ -264,7 +294,8 @@ if ($hasNvidia -or $Machine -ne '7900xtx') {
     }
 }
 $Exe = (Resolve-Path -LiteralPath $Exe).Path
-Push-Location -LiteralPath (Join-Path $PSScriptRoot '..')   # victory.toml is looked for here
+$workingDirectory = if ($PortableExe) { Split-Path -LiteralPath $PortableExe } else { Join-Path $PSScriptRoot '..' }
+Push-Location -LiteralPath $workingDirectory
 try {
     if (-not $SkipShaders) {
         $config = & $victory config
@@ -282,4 +313,6 @@ try {
         }
     }
     & $victory run $Exe --console $Console --execute
+    $runExit = $LASTEXITCODE
 } finally { Pop-Location }
+exit $runExit

@@ -9,8 +9,8 @@
 //! back references (to one of the last 256 blocks, or to a per-format
 //! dictionary that stands in for blocks -1 to -255) and the residuals of the
 //! endpoints and indices against them. The models, the index rank tables,
-//! the BC7 control codes and the dictionaries are constants of the format,
-//! kept in `bcpack-tables.bin` beside this file ([`Tables::builtin`]).
+//! the BC7 control codes and the dictionaries are constants of the format
+//! supplied by the caller ([`Tables::parse`]).
 
 use std::fmt;
 
@@ -360,11 +360,6 @@ fn build_ctrl7_meta(ctrl: u16) -> Ctrl7Meta {
 }
 
 impl Tables {
-    /// The tables VIctory ships with.
-    pub fn builtin() -> Result<Tables, Error> {
-        Tables::parse(include_bytes!("bcpack-tables.bin"))
-    }
-
     /// Reads the table file: 128 x 9 u16 model frequencies (per bucket, the
     /// frequency of each of its symbols), the rank tables (BC1 256 B, BC3
     /// alpha 64 B and colour 256 B, BC4 64 B, BC5 64 B), 512 u16 BC7 control
@@ -1863,10 +1858,6 @@ mod tests {
         }
 
         impl RefTables {
-            pub(super) fn builtin() -> Result<RefTables, Error> {
-                RefTables::parse(include_bytes!("bcpack-tables.bin"))
-            }
-
             pub(super) fn parse(bytes: &[u8]) -> Result<RefTables, Error> {
                 if bytes.len() != TABLES_SIZE {
                     return Err(Error("table file has the wrong size"));
@@ -2656,9 +2647,16 @@ mod tests {
         }
     }
 
-    #[test]
-    fn the_shipped_tables_parse() {
-        assert!(Tables::builtin().is_ok());
+    fn local_table_bytes() -> Option<Vec<u8>> {
+        let path = std::env::var_os("VICTORY_BCPACK_TABLES")?;
+        Some(std::fs::read(path).expect("read the local BCPack tables"))
+    }
+
+    fn parse_test_tables(bytes: &[u8]) -> (Tables, ref_oracle::RefTables) {
+        (
+            Tables::parse(bytes).unwrap(),
+            ref_oracle::RefTables::parse(bytes).unwrap(),
+        )
     }
 
     /// Tables we made: uniform models, identity ranks, a BC7 code per mode,
@@ -2802,7 +2800,7 @@ mod tests {
     }
 
     /// Interleaves multi-fragment per-lane streams using any `Tables` (including
-    /// `Tables::builtin()`), splitting each lane into chunks of `chunk_syms` symbols
+    /// local format tables), splitting each lane into chunks of `chunk_syms` symbols
     /// with `reset = true` between chunks and varying model shapes.
     fn stream_multi_fragment(
         t: &ref_oracle::RefTables,
@@ -3089,8 +3087,7 @@ mod tests {
     }
 
     /// The window table finds the bucket a scan of the starts finds, for
-    /// every slot of every model, in the shipped tables and in ours (whose
-    /// buckets are wide) and in tables whose buckets are one slot wide.
+    /// every slot of every model, using wide and narrow buckets and any local tables.
     #[test]
     fn bucket_lookup_matches_a_scan_of_the_starts() {
         let mut narrow = tables();
@@ -3104,11 +3101,11 @@ mod tests {
             }
         }
         let synth_raw = tables();
-        for raw in [
-            include_bytes!("bcpack-tables.bin").as_slice(),
-            synth_raw.as_slice(),
-            narrow.as_slice(),
-        ] {
+        let local = local_table_bytes();
+        for raw in [synth_raw.as_slice(), narrow.as_slice()]
+            .into_iter()
+            .chain(local.as_deref())
+        {
             let t = Tables::parse(raw).unwrap();
             let rt = ref_oracle::RefTables::parse(raw).unwrap();
             for model in 0..MODELS as u8 {
@@ -3160,7 +3157,7 @@ mod tests {
     }
 
     /// A payload step decodes the symbol and state the first version did, for
-    /// every model and slot of the shipped tables, ours, and narrow edge tables
+    /// every model and slot of the synthetic edge tables and any local tables
     /// (including `slot == 0` and `freq[0] == 1`).
     #[test]
     fn payload_step_matches_the_reference_decode() {
@@ -3182,12 +3179,15 @@ mod tests {
             }
         }
         let synth_raw = tables();
+        let local = local_table_bytes();
         for raw in [
-            include_bytes!("bcpack-tables.bin").as_slice(),
             synth_raw.as_slice(),
             narrow.as_slice(),
             freq0_one.as_slice(),
-        ] {
+        ]
+        .into_iter()
+        .chain(local.as_deref())
+        {
             let t = Tables::parse(raw).unwrap();
             let rt = ref_oracle::RefTables::parse(raw).unwrap();
             for model in 0..MODELS as u8 {
@@ -3335,21 +3335,20 @@ mod tests {
     }
 
     /// Bit-exact oracle parity across all 6 formats (`BC1`, `BC3`, `BC4`, `BC5`, `BC6H`, `BC7`),
-    /// both `Tables::builtin()` and synthetic tables, at strip-boundary block counts and with
+    /// both synthetic and locally supplied tables, at strip-boundary block counts and with
     /// short, long, and reset multi-fragment streams.
     #[test]
     fn oracle_parity_all_formats_and_strip_boundaries() {
-        let builtin = Tables::builtin().unwrap();
-        let builtin_ref = ref_oracle::RefTables::builtin().unwrap();
-        let synth_raw = tables();
-        let synth = Tables::parse(&synth_raw).unwrap();
-        let synth_ref = ref_oracle::RefTables::parse(&synth_raw).unwrap();
+        let local = local_table_bytes().as_deref().map(parse_test_tables);
+        let (synth, synth_ref) = parse_test_tables(&tables());
 
         for (label, t, rt, use_multi) in [
-            ("builtin", &builtin, &builtin_ref, true),
             ("synthetic", &synth, &synth_ref, false),
             ("synthetic-multi", &synth, &synth_ref, true),
-        ] {
+        ]
+        .into_iter()
+        .chain(local.as_ref().map(|(t, rt)| ("local", t, rt, true)))
+        {
             for (bc, widths, per, block_bytes) in [
                 (1u8, &BC1_WIDTHS[..], 1usize, 8usize),
                 (3, &BC3_WIDTHS[..], 2, 16),
@@ -3465,34 +3464,35 @@ mod tests {
         ref_oracle::decode(7, &src, &mut want, &rt).unwrap();
         assert_eq!(got, want);
 
-        // Also test every non-zero ctrl7 code in Tables::builtin() (real game modes/partitions).
-        let builtin = Tables::builtin().unwrap();
-        let builtin_ref = ref_oracle::RefTables::builtin().unwrap();
-        let builtin_blocks = 512usize;
-        let recs_b = valid_records_for(7, &builtin, builtin_blocks, 0x0123_4567_89ab_cdef);
-        let src_b = stream_multi_fragment(&builtin_ref, &BC7_WIDTHS, 2, &recs_b, 128);
-        let mut got_b = vec![0u8; builtin_blocks * 16];
-        let mut want_b = vec![0u8; builtin_blocks * 16];
-        decode(7, &src_b, &mut got_b, &builtin).unwrap();
-        ref_oracle::decode(7, &src_b, &mut want_b, &builtin_ref).unwrap();
+        let Some(bytes) = local_table_bytes() else {
+            return;
+        };
+        let (local, local_ref) = parse_test_tables(&bytes);
+        let blocks = 512usize;
+        let recs_b = valid_records_for(7, &local, blocks, 0x0123_4567_89ab_cdef);
+        let src_b = stream_multi_fragment(&local_ref, &BC7_WIDTHS, 2, &recs_b, 128);
+        let mut got_b = vec![0u8; blocks * 16];
+        let mut want_b = vec![0u8; blocks * 16];
+        decode(7, &src_b, &mut got_b, &local).unwrap();
+        ref_oracle::decode(7, &src_b, &mut want_b, &local_ref).unwrap();
         assert_eq!(got_b, want_b);
     }
 
     /// Bit-exact oracle parity for ALL BC6H modes (1..=14) and all 32 partitions,
-    /// across both `Tables::builtin()` and synthetic tables.
+    /// across synthetic and locally supplied tables.
     #[test]
     fn oracle_parity_all_bc6_modes() {
-        let builtin = Tables::builtin().unwrap();
-        let builtin_ref = ref_oracle::RefTables::builtin().unwrap();
-        let synth_raw = tables();
-        let synth = Tables::parse(&synth_raw).unwrap();
-        let synth_ref = ref_oracle::RefTables::parse(&synth_raw).unwrap();
+        let local = local_table_bytes().as_deref().map(parse_test_tables);
+        let (synth, synth_ref) = parse_test_tables(&tables());
         // 14 modes * 32 partitions = 448 blocks (> 1 strip, exercises every mode x partition pair).
         let blocks = 14 * 32;
         for (label, t, rt, use_multi) in [
-            ("builtin", &builtin, &builtin_ref, true),
             ("synthetic", &synth, &synth_ref, false),
-        ] {
+            ("synthetic-multi", &synth, &synth_ref, true),
+        ]
+        .into_iter()
+        .chain(local.as_ref().map(|(t, rt)| ("local", t, rt, true)))
+        {
             let mut recs = valid_records_for(6, t, blocks, 0xabcd_ef01_2345_6789);
             for (i, r) in recs.iter_mut().enumerate() {
                 r[30] = (i % 14) as u8; // mode = 1..=14
@@ -3514,11 +3514,11 @@ mod tests {
     /// Identical error behavior on truncated, corrupt, invalid mode/ctrl, and noise inputs.
     #[test]
     fn oracle_parity_errors_and_noise() {
-        let builtin = Tables::builtin().unwrap();
-        let builtin_ref = ref_oracle::RefTables::builtin().unwrap();
-        let synth_raw = tables();
-        let synth = Tables::parse(&synth_raw).unwrap();
-        let synth_ref = ref_oracle::RefTables::parse(&synth_raw).unwrap();
+        let local = local_table_bytes().as_deref().map(parse_test_tables);
+        let (synth, synth_ref) = parse_test_tables(&tables());
+        let (t, rt) = local
+            .as_ref()
+            .map_or((&synth, &synth_ref), |(t, rt)| (t, rt));
 
         // 1. Truncated valid streams across strip boundaries for all 6 formats.
         for (bc, widths, per, block_bytes) in [
@@ -3530,14 +3530,13 @@ mod tests {
             (7, &BC7_WIDTHS[..], 2, 16),
         ] {
             let blocks = 300usize;
-            let recs =
-                valid_records_for(bc, &builtin, blocks, 0x7777_1111_2222_3333 ^ u64::from(bc));
-            let src = stream_multi_fragment(&builtin_ref, widths, per, &recs, 100);
+            let recs = valid_records_for(bc, t, blocks, 0x7777_1111_2222_3333 ^ u64::from(bc));
+            let src = stream_multi_fragment(rt, widths, per, &recs, 100);
             for cut in [0, 1, 7, 8, 9, src.len() / 3, src.len() / 2, src.len() - 1] {
                 let mut got = vec![0u8; blocks * block_bytes];
                 let mut want = vec![0u8; blocks * block_bytes];
-                let r_got = decode(bc, &src[..cut], &mut got, &builtin);
-                let r_want = ref_oracle::decode(bc, &src[..cut], &mut want, &builtin_ref);
+                let r_got = decode(bc, &src[..cut], &mut got, t);
+                let r_want = ref_oracle::decode(bc, &src[..cut], &mut want, rt);
                 assert_eq!(r_got, r_want, "BC{bc} truncated at {cut}/{}", src.len());
                 if r_got.is_ok() {
                     assert_eq!(got, want, "BC{bc} ok at {cut}");
@@ -3599,7 +3598,7 @@ mod tests {
                 })
                 .collect();
             let (t, rt) = if round % 2 == 0 {
-                (&builtin, &builtin_ref)
+                (t, rt)
             } else {
                 (&synth, &synth_ref)
             };
@@ -3652,13 +3651,13 @@ mod tests {
         }
     }
 
-    /// Decode throughput across all 6 formats using `Tables::builtin()`:
-    /// `cargo test --release -p victory-formats bcpack_throughput_builtin -- --ignored --nocapture`.
+    /// Decode throughput across all 6 formats using locally supplied tables.
+    /// Run `cargo test --release -p victory-formats bcpack_throughput_local -- --ignored --nocapture`.
     #[test]
     #[ignore = "benchmark"]
-    fn bcpack_throughput_builtin() {
-        let t = Tables::builtin().unwrap();
-        let rt = ref_oracle::RefTables::builtin().unwrap();
+    fn bcpack_throughput_local() {
+        let bytes = local_table_bytes().expect("set VICTORY_BCPACK_TABLES");
+        let (t, rt) = parse_test_tables(&bytes);
         let cases: [(u8, &[u8], usize, usize); 6] = [
             (1, &BC1_WIDTHS, 1, 8),
             (3, &BC3_WIDTHS, 2, 16),
@@ -3680,7 +3679,7 @@ mod tests {
             }
             let secs = started.elapsed().as_secs_f64() / f64::from(runs);
             println!(
-                "builtin BC{bc}: {blocks} blocks, {:.1} MB out/s, {:.1} ns/block",
+                "local BC{bc}: {blocks} blocks, {:.1} MB out/s, {:.1} ns/block",
                 (blocks * block) as f64 / secs / 1e6,
                 secs * 1e9 / blocks as f64
             );
@@ -3717,14 +3716,10 @@ mod tests {
     /// A dictionary entry stands in for a block the decoder made: a set with
     /// 0 index bits holds no indices, and pixel 0 is the anchor (top bit clear).
     #[test]
+    #[ignore = "needs locally supplied format tables"]
     fn bc7_dictionary_indices_line_up() {
-        let t = Tables::builtin().unwrap();
-        // Entry 0 keeps its leading index (no repeated widths before it).
-        let (ep0, ix0) = &t.bc7[0];
-        assert_eq!(ep0.ctrl, 0);
-        assert_eq!(ix0.bits, [4, 0]);
-        assert_eq!(ix0.ix[0], [2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        assert_eq!(ix0.ix[1], [0; 16]);
+        let bytes = local_table_bytes().expect("set VICTORY_BCPACK_TABLES");
+        let t = Tables::parse(&bytes).unwrap();
         for (k, (_, ix)) in t.bc7.iter().enumerate() {
             let anchor = 0..1 << (ix.bits[0] - 1);
             let ok = (ix.bits[1] != 0 || ix.ix[1] == [0; 16]) && anchor.contains(&ix.ix[0][0]);

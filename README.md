@@ -1,5 +1,13 @@
 # VItoriaBr
 
+## Executável para Windows x64
+
+Abra o executável por duplo clique e selecione o executável da sua cópia do jogo, na pasta que contém os arquivos dele. O seletor usa o Windows PowerShell. O perfil portátil inicia em Series S com saída 1080p e registra os pipelines usados. Foi preparado para RTX 5070 Ti ou superior com 34 GB de RAM e ainda não foi medido nesses PCs.
+
+No projeto, `scripts/play.ps1` também aceita `-Machine 5070ti`. O perfil `4060ti` continua disponível. Para experimentar uma lista externa sem substituir o histórico local, passe `-EarlyPipelines <arquivo.txt>`.
+
+O núcleo gráfico desta versão incorpora as mudanças do [Vice-Tay](https://github.com/TaynanGT/Vice-Tay/tree/fe7c6e52198f2070805ffafc4e55a7163291bad0), incluindo a leitura pela GPU de preenchimentos compatíveis, atualização de texturas e preparo antecipado de pipelines.
+
 > 🔴 **AO VIVO AGORA / LIVE NOW:** Acompanhe o desenvolvimento e os testes ao vivo no YouTube → **[Assistir à live](https://www.youtube.com/watch?v=GBm1pRUwWu8)**
 
 > 🇧🇷 **Português** | [🇺🇸 **English below**](#english)

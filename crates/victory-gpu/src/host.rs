@@ -873,18 +873,25 @@ mod retire_batch_tests {
         let before = RETIREMENTS[1].load(Ordering::Relaxed);
         let _ = STARTED.fetch_add(1, Ordering::AcqRel);
         std::thread::scope(|s| {
-            for t in 0..THREADS {
-                s.spawn(move || {
-                    retire_in_batches();
-                    for _ in 0..PER_THREAD {
-                        let (buf, _) = host.upload_buffer(256).expect("upload buffer");
-                        retire_resource_with(buf, true);
-                    }
-                    // Explicitly flush half the threads; let the others exercise RetiredBatch::drop.
-                    if t % 2 == 0 {
-                        flush_retired();
-                    }
-                });
+            // Joined one by one: the scope's own wait can end before a thread's
+            // thread-locals are dropped, and with them `RetiredBatch::drop`.
+            let workers: Vec<_> = (0..THREADS)
+                .map(|t| {
+                    s.spawn(move || {
+                        retire_in_batches();
+                        for _ in 0..PER_THREAD {
+                            let (buf, _) = host.upload_buffer(256).expect("upload buffer");
+                            retire_resource_with(buf, true);
+                        }
+                        // Explicitly flush half the threads; let the others exercise RetiredBatch::drop.
+                        if t % 2 == 0 {
+                            flush_retired();
+                        }
+                    })
+                })
+                .collect();
+            for worker in workers {
+                worker.join().expect("retirement worker");
             }
         });
         let queued_now = RETIREMENTS[1].load(Ordering::Relaxed) - before;
@@ -920,7 +927,9 @@ mod retire_batch_tests {
         let send_drop = SendResource(buf_drop);
 
         std::thread::scope(|s| {
-            s.spawn(move || {
+            // Joined explicitly: the scope's own wait can end before the second
+            // thread's thread-locals are dropped, and with them `RetiredBatch::drop`.
+            let explicit = s.spawn(move || {
                 let SendResource(buf) = send_explicit;
                 let probe = buf.clone();
                 retire_in_batches();
@@ -931,13 +940,15 @@ mod retire_batch_tests {
                 flush_retired();
                 assert_eq!(BATCH.with(|b| b.borrow().entries.len()), 0);
             });
-            s.spawn(move || {
+            let dropped = s.spawn(move || {
                 let SendResource(buf) = send_drop;
                 retire_in_batches();
                 retire_resource_with(buf, true);
                 assert_eq!(BATCH.with(|b| b.borrow().entries.len()), 1);
                 // Intentionally exit without flush_retired() to exercise RetiredBatch::drop.
             });
+            explicit.join().expect("explicit flush worker");
+            dropped.join().expect("drop flush worker");
         });
         let stamp_after = STARTED.load(Ordering::Acquire) + crate::queue::queued();
 
@@ -1723,13 +1734,287 @@ mod tests {
 /// ([`HostList::batch_place`]).
 const BATCHES: u32 = 8;
 
+/// How a host list that was open is closed ([`Recording::close`]).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Closing {
+    /// With what was recorded into it: the title's Close, a cut at a wait,
+    /// a list of ours.
+    Recorded,
+    /// Taken for a submission while open (`HostList::close_if_open`).
+    Taken,
+    /// Still open where the lists go to the queue ([`closed_for_execution`]).
+    AtExecution,
+}
+
+/// What became of the host lists that were left open
+/// ([`Recording::left_open`]), and of lists that came to a submission open.
+#[derive(Default)]
+pub(crate) struct OpenLists {
+    /// Left open: handed to a title's list in place of the recording a
+    /// submission took (`crate::list::detach`).
+    pub(crate) left: std::sync::atomic::AtomicU64,
+    /// Of those: closed by the title's next Reset of its list.
+    pub(crate) by_reset: std::sync::atomic::AtomicU64,
+    /// Of those: closed when the title's list was submitted again with no
+    /// Reset in between.
+    pub(crate) taken_again: std::sync::atomic::AtomicU64,
+    /// Of those: closed with something recorded and no Reset before it.
+    pub(crate) otherwise: std::sync::atomic::AtomicU64,
+    /// Recordings begun by a Reset that the title submitted without a
+    /// Close: closed when taken.
+    pub(crate) unclosed: std::sync::atomic::AtomicU64,
+    /// Open where the lists go to the queue, and closed there. No path is
+    /// known to lead here.
+    pub(crate) at_execution: std::sync::atomic::AtomicU64,
+}
+
+impl OpenLists {
+    const fn new() -> Self {
+        OpenLists {
+            left: std::sync::atomic::AtomicU64::new(0),
+            by_reset: std::sync::atomic::AtomicU64::new(0),
+            taken_again: std::sync::atomic::AtomicU64::new(0),
+            otherwise: std::sync::atomic::AtomicU64::new(0),
+            unclosed: std::sync::atomic::AtomicU64::new(0),
+            at_execution: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+
+    /// The six counts, in the order of the fields.
+    #[cfg(any(test, feature = "diagnostics"))]
+    pub(crate) fn counts(&self) -> [u64; 6] {
+        [&self.left, &self.by_reset, &self.taken_again, &self.otherwise, &self.unclosed, &self.at_execution]
+            .map(|count| count.load(Ordering::Relaxed))
+    }
+}
+
+/// Of every host list of the process.
+pub(crate) static OPEN_LISTS: OpenLists = OpenLists::new();
+
+/// For the lines every five seconds: what became of the host lists left
+/// open, since the start.
+#[cfg(feature = "diagnostics")]
+fn open_lists_line() {
+    let [left, by_reset, taken_again, otherwise, unclosed, at_execution] = OPEN_LISTS.counts();
+    tracing::info!(
+        "host lists left open when their recording was taken, since the start: {left}; closed by the title's next Reset \
+         {by_reset}, when submitted again without a Reset {taken_again}, with something recorded and no Reset {otherwise}; \
+         recordings submitted without a Close and closed when taken {unclosed}; found open where lists go to the queue \
+         {at_execution} (none is expected)"
+    );
+}
+
+/// Whether a host list is open for recording, apart from the D3D12 calls:
+/// [`HostList`] asks it what to do with its native list and tells it what
+/// it did. A list is open when made and after a reset, and closed by a
+/// close; only a closed list may go to a queue.
+pub(crate) struct Recording(std::sync::atomic::AtomicU8);
+
+impl Recording {
+    const CLOSED: u8 = 0;
+    const OPEN: u8 = 1;
+    /// Open, and handed to a title's list in place of the recording a
+    /// submission took: the title has not reset it yet.
+    const LEFT_OPEN: u8 = 2;
+
+    /// Of a list just made or reset.
+    pub(crate) const fn open() -> Self {
+        Recording(std::sync::atomic::AtomicU8::new(Self::OPEN))
+    }
+
+    pub(crate) fn is_closed(&self) -> bool {
+        self.0.load(Ordering::Relaxed) == Self::CLOSED
+    }
+
+    /// The open list is handed to a title's list whose recording was taken,
+    /// and is not closed for it.
+    pub(crate) fn left_open(&self, lists: &OpenLists) {
+        if self.0.compare_exchange(Self::OPEN, Self::LEFT_OPEN, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
+            lists.left.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    /// The list is to be closed: whether it was open, so that its native
+    /// list has to be closed. It counts as closed from here on.
+    pub(crate) fn close(&self, how: Closing, lists: &OpenLists) -> bool {
+        let count = match (self.0.swap(Self::CLOSED, Ordering::Relaxed), how) {
+            (Self::CLOSED, _) => return false,
+            (_, Closing::AtExecution) => &lists.at_execution,
+            (Self::LEFT_OPEN, Closing::Taken) => &lists.taken_again,
+            (Self::LEFT_OPEN, Closing::Recorded) => &lists.otherwise,
+            (_, Closing::Taken) => &lists.unclosed,
+            (_, Closing::Recorded) => return true,
+        };
+        count.fetch_add(1, Ordering::Relaxed);
+        true
+    }
+
+    /// The list is reset: whether it was open, so that its native list has
+    /// to be closed first, as a recording that is discarded. It is open
+    /// from here on.
+    pub(crate) fn reset(&self, lists: &OpenLists) -> bool {
+        match self.0.swap(Self::OPEN, Ordering::Relaxed) {
+            Self::CLOSED => false,
+            Self::LEFT_OPEN => {
+                lists.by_reset.fetch_add(1, Ordering::Relaxed);
+                true
+            }
+            _ => true,
+        }
+    }
+}
+
+#[cfg(test)]
+mod recording_tests {
+    use super::{Closing, OPEN_LISTS, OpenLists, Recording, host};
+
+    /// A title's list through a submission, its next Reset and a second
+    /// submission: the host list it was left open is closed by the Reset
+    /// (its native list has to be, before its allocator is reset), records,
+    /// is closed by the title, and has nothing left to close where the
+    /// lists go to the queue.
+    #[test]
+    fn a_list_left_open_is_closed_by_the_next_reset_and_closed_when_submitted() {
+        let lists = OpenLists::default();
+        // The first recording: closed by the title, taken by the submission.
+        let first = Recording::open();
+        assert!(first.close(Closing::Recorded, &lists));
+        assert!(first.is_closed());
+        // In its place a new host list, left open.
+        let second = Recording::open();
+        second.left_open(&lists);
+        assert!(!second.is_closed());
+        // The title's Reset.
+        assert!(second.reset(&lists), "the open native list must be closed before the reset");
+        assert!(!second.is_closed());
+        // Recorded into, closed by the title, taken by the second submission.
+        assert!(second.close(Closing::Recorded, &lists));
+        assert!(second.is_closed());
+        for taken in [&first, &second] {
+            assert!(!taken.close(Closing::AtExecution, &lists), "open where the lists go to the queue");
+        }
+        assert_eq!(lists.counts(), [1, 1, 0, 0, 0, 0]);
+    }
+
+    /// A title's list submitted twice with no Reset in between: the second
+    /// submission takes the host list that was left open, which is closed
+    /// when it is taken.
+    #[test]
+    fn a_list_submitted_twice_without_a_reset_is_closed_when_taken() {
+        let lists = OpenLists::default();
+        let first = Recording::open();
+        assert!(first.close(Closing::Recorded, &lists));
+        let second = Recording::open();
+        second.left_open(&lists);
+        // (`HostList::close_if_open`: open, so it is closed as taken.)
+        assert!(!second.is_closed());
+        assert!(second.close(Closing::Taken, &lists));
+        assert!(second.is_closed());
+        // The title's list has a third, left open; that one is not submitted.
+        let third = Recording::open();
+        third.left_open(&lists);
+        for taken in [&first, &second] {
+            assert!(!taken.close(Closing::AtExecution, &lists), "open where the lists go to the queue");
+        }
+        assert_eq!(lists.counts(), [2, 0, 1, 0, 0, 0]);
+    }
+
+    /// An open list where the lists go to the queue is closed there and
+    /// counted, once.
+    #[test]
+    fn a_list_open_at_the_queue_is_closed_there_and_counted() {
+        let lists = OpenLists::default();
+        for left in [false, true] {
+            let list = Recording::open();
+            if left {
+                list.left_open(&lists);
+            }
+            assert!(list.close(Closing::AtExecution, &lists));
+            assert!(list.is_closed());
+            assert!(!list.close(Closing::AtExecution, &lists));
+        }
+        assert_eq!(lists.counts(), [1, 0, 0, 0, 0, 2]);
+    }
+
+    /// Every list left open is counted once, by what closed it; a recording
+    /// the title discards or closes itself is none of them.
+    #[test]
+    fn what_closes_an_open_list_is_counted_once() {
+        let lists = OpenLists::default();
+        // Left open, then closed with something recorded and no Reset.
+        let list = Recording::open();
+        list.left_open(&lists);
+        list.left_open(&lists);
+        assert!(list.close(Closing::Recorded, &lists));
+        assert!(!list.close(Closing::Recorded, &lists));
+        assert_eq!(lists.counts(), [1, 0, 0, 1, 0, 0]);
+        // A closed list is reset: nothing to close first. Its recording is
+        // discarded by another Reset: closed first, not counted.
+        assert!(!list.reset(&lists));
+        assert!(list.reset(&lists));
+        // Submitted without a Close: closed when taken.
+        assert!(list.close(Closing::Taken, &lists));
+        assert!(!list.close(Closing::Taken, &lists));
+        assert_eq!(lists.counts(), [1, 0, 0, 1, 1, 0]);
+        // A closed list is not left open.
+        list.left_open(&lists);
+        assert!(list.is_closed());
+        assert_eq!(lists.counts(), [1, 0, 0, 1, 1, 0]);
+    }
+
+    /// The check where lists go to the queue, with a real list: one given
+    /// to a submission open is closed there, counted, and runs.
+    #[test]
+    fn an_open_host_list_given_to_a_submission_is_closed_and_runs() {
+        let Some(host) = host() else {
+            eprintln!("skipping: no D3D12 device");
+            return;
+        };
+        let list = host.new_list().unwrap();
+        assert!(!list.is_closed());
+        let before = OPEN_LISTS.counts()[5];
+        host.execute(&[&list]);
+        assert!(list.is_closed());
+        assert!(OPEN_LISTS.counts()[5] > before);
+        // SAFETY: a plain query of the device.
+        assert!(unsafe { host.device.GetDeviceRemovedReason() }.is_ok());
+    }
+}
+
+/// Where host lists go to a queue: only closed lists may. Every path closes
+/// them before (the title's Close, `HostList::close_if_open` when a list is
+/// taken open); one that is open still is closed here, with what it holds,
+/// counted and logged (the first four, then every one that doubles the
+/// count). How many were open.
+pub(crate) fn closed_for_execution(runs: &[&HostList]) -> usize {
+    let mut found = 0;
+    for list in runs {
+        if !list.recording.is_closed() {
+            list.close_as(Closing::AtExecution);
+            found += 1;
+        }
+    }
+    if found != 0 {
+        let so_far = OPEN_LISTS.at_execution.load(Ordering::Relaxed);
+        if (so_far - found as u64..so_far).any(|n| n < 4 || (n + 1).is_power_of_two()) {
+            tracing::warn!(
+                found,
+                so_far,
+                lists = runs.len(),
+                "host lists were still open where they go to the queue: closed there"
+            );
+        }
+    }
+    found
+}
+
 /// A host command list and its allocator, always used together.
 pub(crate) struct HostList {
     allocator: ID3D12CommandAllocator,
     /// With barriers held and joined (`rec`).
     pub(crate) list: rec::Rec,
-    /// Whether the underlying D3D12 list has been closed since its last reset.
-    closed: std::sync::atomic::AtomicBool,
+    /// Whether the underlying D3D12 list is open for recording.
+    recording: Recording,
     /// Work for submission time, in recorded order.
     deferred: Mutex<Deferred>,
     /// Upload memory for data the list's draws make (expanded vertices),
@@ -3205,6 +3490,14 @@ struct Deferred {
     /// Scratch memory [`HostList::fill_scratch`] fills since the list last
     /// wrote title memory (source, bytes): its host address.
     filled: std::collections::HashMap<(usize, usize), u64, std::hash::BuildHasherDefault<AddressHash>>,
+    /// Disjoint placed copies that can supply constants in this recording, sorted by address.
+    placed_constants: Vec<place::ConstantSource>,
+    /// Reusable snapshots by title address and length.
+    constant_values: std::collections::BTreeMap<(usize, usize), place::ConstantSnapshot>,
+    /// Changes when a recorded write or reset can invalidate a pending snapshot.
+    constant_write_version: u64,
+    /// GPU snapshots of constant data, held through every use of the list.
+    constant_snapshots: Vec<ID3D12Resource>,
     /// Textures whose contents the list brings up to date.
     textures: std::collections::HashSet<usize>,
     /// Last GPU source copied into each aliased host texture in this list.
@@ -3261,12 +3554,19 @@ impl Deferred {
         self.uploads.push(buffer);
     }
 
-    /// The steps recorded last write title memory: what was brought up to
-    /// date before them is not any more.
-    fn title_written(&mut self) {
+    /// The steps recorded last write title memory. A copy already recorded on the GPU
+    /// only replaces sources it overlaps. Deferred CPU writes invalidate them all.
+    fn title_written(&mut self, placed: Option<(usize, usize)>) {
         self.refreshed.clear();
         self.gpu_written.clear();
         self.filled.clear();
+        if let Some((address, len)) = placed {
+            self.forget_placed_constants(address, len);
+        } else if !self.placed_constants.is_empty() || !self.constant_values.is_empty() {
+            self.constant_write_version = self.constant_write_version.wrapping_add(1);
+            self.placed_constants.clear();
+            self.constant_values.clear();
+        }
     }
 }
 
@@ -3868,18 +4168,22 @@ fn late_blocked(runs: &[&HostList]) -> Option<usize> {
 /// for the first time, is read as it was before that flight.
 fn fill_is_titles(src: usize, len: usize) -> bool {
     const SMALL: usize = 64 << 10;
-    static MODE: OnceLock<u32> = OnceLock::new();
-    let mode = *MODE.get_or_init(|| match std::env::var("VICTORY_FILL_TITLE").ok().as_deref() {
-        Some("1") => 1,
-        Some("2") => 2,
-        _ => 0,
-    });
+    let mode = fill_title_mode();
     #[cfg(feature = "diagnostics")]
     let mode = crate::ab::pick("VICTORY_FILL_TITLE").map_or(mode, |on| if on { 2 } else { 0 });
     if mode == 0 || len > SMALL {
         return false;
     }
     !crate::watch::landed_lately(src, len, 600) || mode == 1 && crate::watch::written_since_taken(src, len)
+}
+
+fn fill_title_mode() -> u32 {
+    static MODE: OnceLock<u32> = OnceLock::new();
+    *MODE.get_or_init(|| match std::env::var("VICTORY_FILL_TITLE").ok().as_deref() {
+        Some("1") => 1,
+        Some("2") => 2,
+        _ => 0,
+    })
 }
 
 /// Diagnostics: the waits for flights, by what waited, why it was not done
@@ -4343,14 +4647,25 @@ pub(crate) fn settle_for_fence() {
     settle_now(WHY_FENCE);
 }
 
+/// Diagnostics for landed-list recycling and dynamic descriptor slots waiting
+/// for retirement: `[0]` µs spent in `land()` on the submitting thread, `[1]`
+/// µs spent in `land()` on `victory-late-wait`, `[2]` peak `line.landed.len()`
+/// observed, `[3]` peak unretired dynamic descriptor slots observed in
+/// `line.landed` before `past_lag`, `[4]` peak dynamic descriptor slots held
+/// by a batch of settled flights right before `Detached::release_tables`.
+#[cfg(feature = "diagnostics")]
+static LAND_RETIRE_STATS: [std::sync::atomic::AtomicU64; 5] = [const { std::sync::atomic::AtomicU64::new(0) }; 5];
+
 /// Resets the host lists of settled flights and keeps them for reuse, as
 /// a queue does for the lists it ran (`crate::list::recycle`), [`bury_lag`]
-/// flights after they landed. The dynamic descriptor slots of their tables
-/// go back as soon as they land ([`past_lag`]).
+/// flights after they landed. `settle` already releases each flight's dynamic
+/// descriptor slots (`Detached::release_tables`) before pushing it to
+/// `line.landed`; [`past_lag`] still calls `crate::list::ran` as an idempotent
+/// backstop.
 fn land() {
     // One at a time, so that the flights kept go back in front of the ones
     // that landed meanwhile. A thread that finds another landing leaves it
-    // to that one (the submitting thread lands after every flight it sends).
+    // to that one.
     static LANDING: Mutex<()> = Mutex::new(());
     let old = {
         let _landing = match LANDING.try_lock() {
@@ -4361,6 +4676,16 @@ fn land() {
         // Taken out of the line: giving slots back takes the heap's lock,
         // which recording threads hold while they search.
         let mut landed = std::mem::take(&mut line().landed);
+        #[cfg(feature = "diagnostics")]
+        {
+            LAND_RETIRE_STATS[2].fetch_max(landed.len() as u64, Ordering::Relaxed);
+            let pending: u64 = landed
+                .iter()
+                .flat_map(|(lists, _)| lists.iter())
+                .map(crate::list::Detached::pending_dynamic_slots)
+                .sum();
+            LAND_RETIRE_STATS[3].fetch_max(pending, Ordering::Relaxed);
+        }
         let old = past_lag(&mut landed, bury_lag() as usize, |(lists, _)| crate::list::ran(lists));
         let mut line = line();
         landed.append(&mut line.landed);
@@ -4444,6 +4769,10 @@ mod landed_tests {
     }
 }
 
+/// Whether `victory-late-wait` is alive and serving `line.poke` requests so
+/// `send_late` can offload `land()` off the submitting thread.
+static LATE_HELPER_LIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// The thread that settles the flights once the card has run them all
 /// ([`late`]): without it a bottom-of-pipe write would reach the title only
 /// at the next call that settles, and a title thread that polls such a
@@ -4459,6 +4788,7 @@ fn late_helper() {
         tracing::warn!("no event for the thread that settles submissions sent ahead");
         return;
     };
+    LATE_HELPER_LIVE.store(true, Ordering::Release);
     loop {
         let target = {
             let mut line = line();
@@ -4476,7 +4806,11 @@ fn late_helper() {
         };
         let Some(target) = target else {
             let mut helping = crate::timeline::span("helper: landed lists reset and given back");
+            #[cfg(feature = "diagnostics")]
+            let started = std::time::Instant::now();
             land();
+            #[cfg(feature = "diagnostics")]
+            LAND_RETIRE_STATS[1].fetch_add(started.elapsed().as_micros() as u64, Ordering::Relaxed);
             helping.next("helper: looking at what queues hold");
             crate::queue::release_held(false);
             continue;
@@ -4500,7 +4834,11 @@ fn late_helper() {
             }
             host.settle(&mut submitted, WHY_CARD_DONE);
         }
+        #[cfg(feature = "diagnostics")]
+        let started = std::time::Instant::now();
         land();
+        #[cfg(feature = "diagnostics")]
+        LAND_RETIRE_STATS[1].fetch_add(started.elapsed().as_micros() as u64, Ordering::Relaxed);
         crate::queue::release_held(false);
     }
 }
@@ -4847,7 +5185,49 @@ fn late_line(frames: f64) {
             );
         }
     }
+    #[cfg(feature = "diagnostics")]
+    {
+        let submit_us = LAND_RETIRE_STATS[0].swap(0, Ordering::Relaxed) as f64;
+        let helper_us = LAND_RETIRE_STATS[1].swap(0, Ordering::Relaxed) as f64;
+        let peak_landed_flights = LAND_RETIRE_STATS[2].swap(0, Ordering::Relaxed);
+        let peak_landed_slots = LAND_RETIRE_STATS[3].swap(0, Ordering::Relaxed);
+        let peak_settled_slots = LAND_RETIRE_STATS[4].swap(0, Ordering::Relaxed);
+        let (in_flight_slots, landed_slots, landed_flights) = {
+            let line = line();
+            let in_flight: u64 = line
+                .line
+                .iter()
+                .filter_map(|item| match item {
+                    Late::Run(flight) => Some(&flight.lists),
+                    _ => None,
+                })
+                .flat_map(|lists| lists.iter())
+                .map(crate::list::Detached::pending_dynamic_slots)
+                .sum();
+            let landed: u64 = line
+                .landed
+                .iter()
+                .flat_map(|(lists, _)| lists.iter())
+                .map(crate::list::Detached::pending_dynamic_slots)
+                .sum();
+            (in_flight, landed, line.landed.len())
+        };
+        tracing::info!(
+            "landed list recycling per frame: {:.2} ms on submitting thread, {:.2} ms on helper thread; \
+             dynamic slots waiting for retirement: {} in flight (peak {} retired at settle), {} in landed (peak {} in landed; {} landed flights queued, peak {})",
+            submit_us / 1000.0 / frames,
+            helper_us / 1000.0 / frames,
+            in_flight_slots,
+            peak_settled_slots,
+            landed_slots,
+            peak_landed_slots.max(landed_slots),
+            landed_flights,
+            peak_landed_flights.max(landed_flights as u64),
+        );
+    }
     crate::land::log(frames);
+    #[cfg(feature = "diagnostics")]
+    place::constant_snapshots_line(frames);
     if place::on() {
         let t: Vec<f64> = place::STATS.iter().map(|r| r.swap(0, Ordering::Relaxed) as f64 / frames).collect();
         tracing::info!(
@@ -4928,6 +5308,8 @@ mod late_tests {
             eprintln!("no D3D12 device; texture readback dependency not tested");
             return;
         };
+        // Submitting a list clears the shared write-watch query.
+        let _one = crate::watch::one_asking_test();
         let mut title = [0u8; 64];
         let producer = host.new_list().unwrap();
         let (upload, upload_bytes) = host.upload_buffer(512).unwrap();
@@ -4941,7 +5323,7 @@ mod late_tests {
         producer.defer_read_back(readback, title.as_mut_ptr(), [16, 2, 32]);
         producer.close();
 
-        let (submitted, sent) = host.submit(&[&producer], &[], true).ahead.unwrap();
+        let (submitted, sent) = host.submit(&[&producer], &[], true, None, None).ahead.unwrap();
         // SAFETY: the submission lock is held and the event and fence are
         // ours. The test keeps the producer, upload and destination alive.
         unsafe {
@@ -5373,7 +5755,7 @@ impl Host {
             Ok(HostList {
                 allocator,
                 list: rec::Rec::new(list),
-                closed: std::sync::atomic::AtomicBool::new(false),
+                recording: Recording::open(),
                 deferred: Mutex::default(),
                 scratch: Mutex::default(),
                 states: Mutex::default(),
@@ -6145,6 +6527,20 @@ impl Host {
         crate::shadow::relay_fetched(after);
     }
 
+    /// Whether any GPU write copied back to title memory by `flights` overlaps
+    /// a placed shader-visible descriptor heap, so subsequent stamped
+    /// submissions wait for a heap-sync round begun after the landing completes.
+    fn landed_touches_shader_heap(flights: &[&Flight]) -> bool {
+        crate::descriptor::any_in_shader_heap(flights.iter().flat_map(|flight| {
+            let back = flight.back.iter().flat_map(|(_, ranges)| ranges.iter().copied());
+            let card = flight
+                .card
+                .iter()
+                .flat_map(|card| card.ranges.iter().filter(|r| !r.picked).map(|r| r.declared));
+            back.chain(card)
+        }))
+    }
+
     /// [`relay`], on the thread that lands flights: `items` are the first
     /// things of the line, flights the card has run and what follows them.
     /// What their shaders wrote goes into title memory (copies in the
@@ -6198,6 +6594,9 @@ impl Host {
                 });
                 stage.next("landing: copies in the PC's memory");
                 hand_back.merge();
+                if Self::landed_touches_shader_heap(&flights) {
+                    crate::port_journal::prep_wrote();
+                }
                 stage.next("landing: ranges done with");
                 let finishing = std::time::Instant::now();
                 // Only now, and flight by flight: a range another flight
@@ -6217,6 +6616,8 @@ impl Host {
         stage.next("landing: read-backs, telling the title");
         let mut last = 0;
         let mut landed = Vec::new();
+        #[cfg(feature = "diagnostics")]
+        let mut retiring_slots = 0u64;
         let mut telling = std::time::Instant::now();
         for item in items {
             telling = match item {
@@ -6232,6 +6633,10 @@ impl Host {
                         own.landed();
                     }
                     for detached in &mut flight.lists {
+                        #[cfg(feature = "diagnostics")]
+                        {
+                            retiring_slots += detached.pending_dynamic_slots();
+                        }
                         detached.release_tables();
                     }
                     landed.push((flight.lists, flight.order));
@@ -6247,6 +6652,8 @@ impl Host {
                 }
             };
         }
+        #[cfg(feature = "diagnostics")]
+        LAND_RETIRE_STATS[4].fetch_max(retiring_slots, Ordering::Relaxed);
         if last > 0 {
             FINISHED.store(last, Ordering::Release);
             bury(last);
@@ -6434,7 +6841,7 @@ impl Host {
     pub(crate) fn execute(&self, runs: &[&HostList]) -> u64 {
         // Behind what the title's queues were given before it.
         crate::queue::before_sync();
-        self.submit(runs, &[], false).fence
+        self.submit(runs, &[], false, None, None).fence
     }
 
     /// Runs a closed internal upload-only host list synchronously without
@@ -6442,7 +6849,7 @@ impl Host {
     /// when invoked from `VICTORY_THIN=1` worker threads. Settles in-flight
     /// GPU work and waits for the upload list's fence before returning.
     pub(crate) fn execute_sync_internal(&self, list: &HostList) {
-        let _ = self.submit(&[list], &[], false);
+        let _ = self.submit(&[list], &[], false, None, None);
     }
 
     /// A queue's submission with [`late`]: the host lists `lists`, taken
@@ -6452,39 +6859,64 @@ impl Host {
     /// ([`late`] lists those points); their host lists are reset and kept
     /// for reuse then, as a queue does for the lists it ran.
     pub(crate) fn execute_late(&self, lists: Vec<crate::list::Detached>, order: Vec<usize>) {
-        self.execute_parts(lists, order, &[]);
+        self.execute_parts_stamped(lists, order, &[], None);
     }
 
     /// [`Host::execute_late`] of parts of submissions in one: another begins
-    /// at each place of `order` in `parts` ([`joins`]).
-    pub(crate) fn execute_parts(&self, lists: Vec<crate::list::Detached>, order: Vec<usize>, parts: &[usize]) {
+    /// at each place of `order` in `parts` ([`joins`]). `heap_sync` is an
+    /// optional enqueue-time heap-sync stamp (`descriptor::heap_sync_stamp`)
+    /// so back-to-back queued submissions share a single sync round.
+    pub(crate) fn execute_parts_stamped(
+        &self,
+        lists: Vec<crate::list::Detached>,
+        order: Vec<usize>,
+        parts: &[usize],
+        heap_sync: Option<u64>,
+    ) {
         if order.is_empty() {
             crate::list::recycle(lists, &order);
             return;
         }
         late_threads();
-        if let Some(cut) = {
+        let preplan = {
             let runs: Vec<&HostList> = order.iter().map(|&i| lists[i].host()).collect();
-            card_steps::cut_for(&runs)
-        } {
-            match split(lists, order, cut) {
-                Ok([(lists, order), (more, behind)]) => {
-                    let first: Vec<usize> = parts.iter().copied().filter(|&p| p < cut).collect();
-                    let second: Vec<usize> = parts.iter().filter(|&&p| p > cut).map(|p| p - cut).collect();
-                    self.execute_parts(lists, order, &first);
-                    self.execute_parts(more, behind, &second);
+            // (Before the lists' steps are looked at for a cut; `submit`
+            // checks again, which costs a load for each list.)
+            closed_for_execution(&runs);
+            match card_steps::cut_or_plan(&runs) {
+                card_steps::CutOrPlan::Cut(decision) => {
+                    let cut = decision.at;
+                    match split(lists, order, cut) {
+                        Ok([(lists, order), (more, behind)]) => {
+                            #[cfg(feature = "diagnostics")]
+                            decision.applied();
+                            let first: Vec<usize> = parts.iter().copied().filter(|&p| p < cut).collect();
+                            let second: Vec<usize> = parts.iter().filter(|&&p| p > cut).map(|p| p - cut).collect();
+                            self.execute_parts_stamped(lists, order, &first, heap_sync);
+                            self.execute_parts_stamped(more, behind, &second, heap_sync);
+                        }
+                        Err((lists, order)) => self.send_late(lists, order, parts, heap_sync, None),
+                    }
+                    return;
                 }
-                Err((lists, order)) => self.send_late(lists, order, parts),
+                card_steps::CutOrPlan::Plan(plan) => Some(plan),
+                card_steps::CutOrPlan::None => None,
             }
-            return;
-        }
-        self.send_late(lists, order, parts);
+        };
+        self.send_late(lists, order, parts, heap_sync, preplan);
     }
 
-    fn send_late(&self, lists: Vec<crate::list::Detached>, order: Vec<usize>, parts: &[usize]) {
+    fn send_late(
+        &self,
+        lists: Vec<crate::list::Detached>,
+        order: Vec<usize>,
+        parts: &[usize],
+        heap_sync: Option<u64>,
+        preplan: Option<card_steps::Preplan>,
+    ) {
         let sent = {
             let runs: Vec<&HostList> = order.iter().map(|&i| lists[i].host()).collect();
-            self.submit(&runs, parts, true).ahead
+            self.submit(&runs, parts, true, heap_sync, preplan).ahead
         };
         let Some((mut submitted, sent)) = sent else {
             // (Not reached: a submission sent ahead always comes back.)
@@ -6533,8 +6965,18 @@ impl Host {
             LINE_MOVED.notify_one();
         }
         drop(submitted);
-        let _landing = crate::timeline::span("landed lists reset and given back");
-        land();
+        // Every push to `line.landed` (`relay_land` and `settle`) already sets
+        // `line.poke` or runs `land()` directly on `victory-late-wait`, so
+        // `send_late` only falls back to inline `land()` if the helper thread
+        // failed to start.
+        if !LATE_HELPER_LIVE.load(Ordering::Acquire) {
+            let _landing = crate::timeline::span("landed lists reset and given back");
+            #[cfg(feature = "diagnostics")]
+            let started = std::time::Instant::now();
+            land();
+            #[cfg(feature = "diagnostics")]
+            LAND_RETIRE_STATS[0].fetch_add(started.elapsed().as_micros() as u64, Ordering::Relaxed);
+        }
     }
 
     /// Sends `list`, a closed list of ours (the present's copy), as a
@@ -6545,7 +6987,7 @@ impl Host {
     /// fence covering the list in either case.
     fn execute_own(&self, list: &HostList) -> (u64, u64) {
         late_threads();
-        let Submission { fence, ahead: flight } = self.submit(&[list], &[], true);
+        let Submission { fence, ahead: flight } = self.submit(&[list], &[], true, None, None);
         let Some((submitted, sent)) = flight else {
             return (0, fence);
         };
@@ -6700,11 +7142,23 @@ impl Host {
                     }
                 }
                 hand_back(&back);
+                let flights_ref: Vec<&Flight> = items
+                    .iter()
+                    .filter_map(|i| match i {
+                        Late::Run(f) => Some(f),
+                        _ => None,
+                    })
+                    .collect();
+                if Self::landed_touches_shader_heap(&flights_ref) {
+                    crate::port_journal::prep_wrote();
+                }
                 COPY_BACK[0].fetch_add(copying.elapsed().as_micros() as u64, Ordering::Relaxed);
             }
             // In the order given: what tells the title the card is done.
             let mut last = 0;
             let mut landed = Vec::new();
+            #[cfg(feature = "diagnostics")]
+            let mut retiring_slots = 0u64;
             for item in items {
                 match item {
                     Late::Run(mut flight) => {
@@ -6716,6 +7170,10 @@ impl Host {
                             self.card_done(card);
                         }
                         for detached in &mut flight.lists {
+                            #[cfg(feature = "diagnostics")]
+                            {
+                                retiring_slots += detached.pending_dynamic_slots();
+                            }
                             detached.release_tables();
                         }
                         landed.push((flight.lists, flight.order));
@@ -6724,6 +7182,8 @@ impl Host {
                     Late::Signal(fence, value) => crate::fence::set(fence.as_this(), value),
                 }
             }
+            #[cfg(feature = "diagnostics")]
+            LAND_RETIRE_STATS[4].fetch_max(retiring_slots, Ordering::Relaxed);
             if last > 0 {
                 FINISHED.store(last, Ordering::Release);
                 bury(last);
@@ -6785,7 +7245,16 @@ impl Host {
     /// `parts`: the lists of `runs` at which another part begins
     /// ([`joins`]): those go to the queue in calls of their own, one after the
     /// other, as they would have.
-    fn submit<'a>(&'a self, runs: &[&HostList], parts: &[usize], late: bool) -> Submission<'a> {
+    fn submit<'a>(
+        &'a self,
+        runs: &[&HostList],
+        parts: &[usize],
+        late: bool,
+        heap_sync: Option<u64>,
+        preplan: Option<card_steps::Preplan>,
+    ) -> Submission<'a> {
+        // A list is whole only when it is closed.
+        closed_for_execution(runs);
         #[cfg(feature = "diagnostics")]
         let called = std::time::Instant::now();
         #[cfg(feature = "diagnostics")]
@@ -6805,7 +7274,17 @@ impl Host {
         // settles them first, one sent ahead only if preparing it reads
         // what they write.
         // Or the reads are done on the card, behind the flights.
-        let own = if late { self.card_steps(runs) } else { None };
+        #[cfg(feature = "diagnostics")]
+        let mut redirect_wait = None;
+        let own = if late {
+            self.card_steps(
+                runs, preplan,
+                #[cfg(feature = "diagnostics")]
+                &mut redirect_wait,
+            )
+        } else {
+            None
+        };
         #[cfg(feature = "diagnostics")]
         ahead.part(12);
         stage.next("submit: waiting for flights it reads from");
@@ -6814,6 +7293,8 @@ impl Host {
         } else if own.is_none()
             && let Some(why) = late_blocked(runs)
         {
+            #[cfg(feature = "diagnostics")]
+            let timer = redirect_wait.map(|wait| (wait, std::time::Instant::now()));
             if relay_exact() && why == WHY_READ {
                 // Only until the flights that may write what is read have
                 // landed: their copy-back's end, not the card's other work.
@@ -6823,16 +7304,21 @@ impl Host {
             } else {
                 self.settle(&mut submitted, why);
             }
+            #[cfg(feature = "diagnostics")]
+            if let Some((wait, began)) = timer {
+                wait.finished(began.elapsed());
+            }
         }
         #[cfg(feature = "diagnostics")]
         ahead.part(13);
         // Descriptors the title copied into placed heaps directly, before
         // command lists that index those slots are submitted.
         // Renderer port #7 (from renderer patch #4): the round asked for when
-        // the title submitted it, if that is known (`crate::port_journal`).
+        // the title submitted it, if that is known (`crate::port_journal`),
+        // otherwise the enqueue-time `heap_sync` stamp (`SyncRounds`).
         let heaps_on = crate::port_journal::on();
         let heaps_synced = match crate::port_journal::needed() {
-            0 => crate::descriptor::begin_sync_heaps(),
+            0 => crate::descriptor::begin_sync_heaps_for(heap_sync),
             mark => crate::descriptor::begin_sync_heaps_after(mark),
         };
         // That list runs first, and is one of the submission's from here on.
@@ -7632,6 +8118,22 @@ impl HostList {
     }
 
     pub(crate) fn close(&self) {
+        self.close_as(Closing::Recorded);
+    }
+
+    /// Whether the list is closed: only then may it go to a queue.
+    #[cfg(test)]
+    pub(crate) fn is_closed(&self) -> bool {
+        self.recording.is_closed()
+    }
+
+    /// The list, new or reset and open, is handed to a title's list whose
+    /// recording a submission took, and stays open (`crate::list::detach`).
+    pub(crate) fn left_open(&self) {
+        self.recording.left_open(&OPEN_LISTS);
+    }
+
+    fn close_as(&self, how: Closing) {
         let _closing = crate::timeline::span("closing a host list");
         self.twins_to_depth();
         self.textures_back();
@@ -7642,6 +8144,7 @@ impl HostList {
         self.batches_common();
         self.card_budget_out();
         self.take_coming();
+        self.close_constant_snapshots();
         #[cfg(feature = "diagnostics")]
         if let Some((heap, back)) = self.stamps() {
             let count = (self.notes.lock().unwrap_or_else(|e| e.into_inner()).len() as u32).min(STAMPS - 1);
@@ -7657,7 +8160,16 @@ impl HostList {
                 "a host command list did not close ({e}): a command recorded into it was invalid"
             ));
         }
-        self.closed.store(true, Ordering::Relaxed);
+        self.recording.close(how, &OPEN_LISTS);
+    }
+
+    /// Closes a list that is open still, before it goes to a queue: the one
+    /// a title's list was given when its recording was taken
+    /// (`crate::list::detach`), submitted again with no reset in between.
+    pub(crate) fn close_if_open(&self) {
+        if !self.recording.is_closed() {
+            self.close_as(Closing::Taken);
+        }
     }
 
     /// `work` finds, on a thread of ours, refreshes that belong at this
@@ -7690,8 +8202,9 @@ impl HostList {
         let started = std::time::Instant::now();
         let _resetting = crate::timeline::span("resetting a host list");
         self._alive.used();
-        if !self.closed.load(Ordering::Relaxed) {
-            // SAFETY: the title is discarding an unsubmitted recording. Its
+        if self.recording.reset(&OPEN_LISTS) {
+            // SAFETY: the title is discarding an unsubmitted recording, or
+            // resets the list it was left open (`crate::list::detach`). Its
             // native list must close before its allocator can be reset.
             if let Err(e) = unsafe { self.list.close_discarded() } {
                 fail(format_args!("a discarded host command list did not close ({e})"));
@@ -7701,7 +8214,9 @@ impl HostList {
         let texture_backs = {
             let mut deferred = self.deferred();
             let texture_backs = std::mem::take(&mut deferred.texture_backs);
+            let constant_write_version = deferred.constant_write_version.wrapping_add(1);
             *deferred = Deferred::default();
+            deferred.constant_write_version = constant_write_version;
             texture_backs
         };
         self.states.lock().unwrap_or_else(|e| e.into_inner()).clear();
@@ -7729,7 +8244,6 @@ impl HostList {
         if let Err(e) = reset {
             fail(format_args!("a host command list did not reset ({e})"));
         }
-        self.closed.store(false, Ordering::Relaxed);
         // Reuse only after the old native commands have been discarded.
         drop(texture_backs);
         self.prelude.recycle(&prelude_pool::IDLE);
@@ -8247,7 +8761,7 @@ impl HostList {
         deferred
             .copies
             .push(Step::Copy(dst as usize, src as usize, len));
-        deferred.title_written();
+        deferred.title_written(None);
         self.changed_something();
     }
 
@@ -8319,6 +8833,7 @@ impl HostList {
         len: usize,
     ) {
         let mut deferred = self.deferred();
+        deferred.forget_placed_constants(address, len);
         let key = (std::sync::Arc::as_ptr(shadow) as usize, address, len);
         if deferred.gpu_written.insert(key) || !declare_once() {
             deferred.copies.push(Step::GpuWrite(shadow.clone(), address, len));
@@ -8688,7 +9203,7 @@ impl HostList {
         }
         let mut deferred = self.deferred();
         deferred.copies.push(Step::RawCopy { dst, src, len });
-        deferred.title_written();
+        deferred.title_written(None);
         drop(deferred);
         self.changed_something();
     }
@@ -8754,12 +9269,12 @@ impl HostList {
                     batch.fill();
                     batch.title_written(TitleWrite::Copy);
                     crate::port::copied(dst, src, len);
-                    // Renderer port #7: into a heap's records, the rounds
-                    // asked earlier did not see it.
+                    copy_mapped(dst as *mut u8, src as *const u8, len, true);
+                    // Raise the heap-sync floor *after* the copy lands in
+                    // title memory so any round satisfying it sees the bytes.
                     if crate::descriptor::in_shader_heap(dst, len) {
                         crate::port_journal::prep_wrote();
                     }
-                    copy_mapped(dst as *mut u8, src as *const u8, len, true);
                     // With the submission's one asking: the journal learns it.
                     crate::watch::wrote(dst, len);
                     // What the card holds there may be another value although
@@ -8786,9 +9301,6 @@ impl HostList {
                 }
                 Step::Placed(p) => {
                     let started = std::time::Instant::now();
-                    if crate::descriptor::in_shader_heap(p.dst, p.len) {
-                        crate::port_journal::prep_wrote();
-                    }
                     let free = !touches(air, p.src, p.src + p.len) && !touches(air, p.dst, p.dst + p.len);
                     batch.fill();
                     if free {
@@ -8796,6 +9308,11 @@ impl HostList {
                     }
                     if let Some(bytes) = p.prepare(free) {
                         batch.placed.push((p.shadow.clone(), p.dst, bytes));
+                    }
+                    // Raise the floor after `prepare` wrote title memory (non-free
+                    // placed copies land via GPU copy-back and raise the floor there).
+                    if free && crate::descriptor::in_shader_heap(p.dst, p.len) {
+                        crate::port_journal::prep_wrote();
                     }
                     (started, p.len)
                 }
@@ -8813,10 +9330,11 @@ impl HostList {
                     #[cfg(feature = "diagnostics")]
                     let started = std::time::Instant::now();
                     batch.title_written(TitleWrite::Deferred);
-                    // The destination can alias a heap's descriptor records.
-                    crate::port_journal::prep_wrote();
                     let _step = crate::timeline::span("a step of ours");
                     copy_raw_title(dst, src, len);
+                    // The destination can alias a heap's descriptor records;
+                    // raise the floor after the bytes are in title memory.
+                    crate::port_journal::prep_wrote();
                     #[cfg(feature = "diagnostics")]
                     {
                         add(C::Runs, 1);
@@ -9937,11 +10455,20 @@ impl Batch {
 /// Copies mapped title memory, preserving overlap and the standing
 /// write-watch query for a successful, covered private write.
 fn copy_raw_title(dst: usize, src: usize, len: usize) {
+    copy_raw_title_using_mapping(dst, src, len, crate::watch::title_memory_reading_now);
+}
+
+fn copy_raw_title_using_mapping(
+    dst: usize,
+    src: usize,
+    len: usize,
+    read_mapping: impl FnOnce() -> Option<crate::watch::Reading>,
+) {
     if len == 0 || dst.checked_add(len).is_none() || src.checked_add(len).is_none() {
         return;
     }
     let reading = if len <= crate::watch::RAW_COPY_WATCH_LIMIT {
-        crate::watch::title_memory_reading_now()
+        read_mapping()
     } else {
         None
     };
@@ -10443,6 +10970,52 @@ fn swap_format(format: DXGI_FORMAT) -> Option<DXGI_FORMAT> {
     })
 }
 
+/// Use a direct copy for a single plane when possible. A format DXGI cannot
+/// scan out directly can still be sampled into the composer's SDR target.
+fn display_format(
+    native: Option<DXGI_FORMAT>,
+    sampleable: bool,
+    compose: bool,
+) -> Option<DXGI_FORMAT> {
+    if sampleable && (compose || native.is_none()) {
+        Some(crate::compose::UI_FORMAT)
+    } else {
+        native
+    }
+}
+
+#[cfg(test)]
+mod display_format_tests {
+    use super::*;
+
+    #[test]
+    fn single_planes_use_the_composer_when_a_direct_copy_is_unavailable() {
+        for format in [DXGI_FORMAT_R11G11B10_FLOAT, DXGI_FORMAT_R9G9B9E5_SHAREDEXP] {
+            let mut desc = D3D12_RESOURCE_DESC {
+                Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+                Format: format,
+                DepthOrArraySize: 1,
+                SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
+                ..Default::default()
+            };
+            let native = swap_format(format);
+            assert!(native.is_none());
+            assert_eq!(
+                display_format(native, crate::compose::view(&desc).is_some(), false),
+                Some(crate::compose::UI_FORMAT),
+            );
+            desc.Flags = D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
+            assert_eq!(
+                display_format(native, crate::compose::view(&desc).is_some(), false),
+                None,
+            );
+        }
+        let bgra = swap_format(DXGI_FORMAT_B8G8R8A8_UNORM);
+        assert_eq!(display_format(bgra, true, false), bgra);
+        assert_eq!(display_format(bgra, true, true), Some(crate::compose::UI_FORMAT));
+    }
+}
+
 const BUFFERS: u32 = 2;
 
 struct Presenter {
@@ -10678,6 +11251,8 @@ impl Meter {
             if !five {
                 return;
             }
+            #[cfg(feature = "diagnostics")]
+            open_lists_line();
                 tracing::info!(
                     "placed texture views: {} writes of another view of the texture a slot showed (it kept the old view until the new was made)",
                     crate::descriptor::host::KEPT_VIEWS.load(Ordering::Relaxed)
@@ -10901,27 +11476,22 @@ impl Host {
     ) -> Option<bool> {
         // SAFETY: a live resource.
         let desc = unsafe { texture.GetDesc() };
+        let base_view = crate::compose::view(&desc);
         let planes = overlay.and_then(|(over, over_state)| {
             // SAFETY: a live overlay resource.
             let over_desc = unsafe { over.GetDesc() };
             Some((
                 over,
                 D3D12_RESOURCE_STATES(over_state as i32),
-                crate::compose::view(&desc)?,
+                base_view?,
                 crate::compose::view(&over_desc)?,
             ))
         });
         let native_format = swap_format(desc.Format);
-        let format = if planes.is_some() {
-            DXGI_FORMAT_R8G8B8A8_UNORM
-        } else {
-            let Some(format) = native_format else {
-                tracing::warn!(format = desc.Format.0, "cannot present this format");
-                return None;
-            };
-            format
+        let Some(format) = display_format(native_format, base_view.is_some(), planes.is_some()) else {
+            tracing::warn!(format = desc.Format.0, "cannot present this format");
+            return None;
         };
-        let base_view = crate::compose::view(&desc);
         // Keep a single SDR format as Series S changes between UI and movie
         // frames. The composer converts single-plane sources when needed.
         let fg_format = if crate::console::current() == crate::console::Console::SeriesS && base_view.is_some() {
@@ -11011,10 +11581,16 @@ impl Host {
             // read back at once (a saved or listed frame): then a list of
             // its own, one whose last flight has finished or a new one.
             #[cfg(feature = "diagnostics")]
-            let read_now = crate::capture::wanted(frame) || crate::capture::listed(frame);
+            let (save_frame, capture_scene, read_now) = {
+                let listed = crate::capture::listed(frame);
+                let (save_frame, capture_scene) = crate::capture::requested(frame, listed, p.framegen);
+                (save_frame, capture_scene, save_frame || listed)
+            };
             #[cfg(not(feature = "diagnostics"))]
             let read_now = false;
-            let game_ui = if p.framegen && planes.is_some() && !read_now {
+            #[cfg(not(feature = "diagnostics"))]
+            let capture_scene = false;
+            let game_ui = if p.framegen && planes.is_some() && (!read_now || capture_scene) {
                 if p.game_ui.as_ref().is_none_or(|ui| ui.size != (width, height)) {
                     p.game_ui = crate::compose::UiFrames::new(self, (width, height));
                 }
@@ -11128,8 +11704,21 @@ impl Host {
                 list.CopyResource(&back, texture);
             }
             #[cfg(feature = "diagnostics")]
-            let capture = crate::capture::wanted(frame)
+            let scene_available = !capture_scene || planes.is_none() || game_ui.is_some();
+            #[cfg(feature = "diagnostics")]
+            if capture_scene && !scene_available {
+                tracing::warn!(frame, "could not separate the scene for capture before frame generation");
+            }
+            #[cfg(feature = "diagnostics")]
+            let capture = (save_frame && scene_available)
                 .then(|| {
+                    if capture_scene {
+                        tracing::info!(
+                            frame,
+                            title_ui_separate = game_ui.is_some(),
+                            "capturing the scene before frame generation"
+                        );
+                    }
                     if composed {
                         list.ResourceBarrier(&[transition(
                             &back,
@@ -11208,7 +11797,7 @@ impl Host {
             let _ = (flown, fence);
             #[cfg(feature = "diagnostics")]
             if let Some((buffer, footprint)) = capture {
-                crate::capture::save_read_back(frame, &buffer, &footprint);
+                crate::capture::save_read_back(frame, capture_scene, &buffer, &footprint);
             }
             #[cfg(feature = "diagnostics")]
             crate::replay::record::present(texture, state);
@@ -12077,7 +12666,11 @@ mod refresh_tests {
         let _tracked = shadow.track_carded_test();
         crate::watch::ask_once(&[(dst, dst + PAGE)]);
         let before = crate::watch::asked(dst, dst + PAGE).unwrap().0;
-        super::copy_raw_title(dst, value.as_ptr() as usize, value.len());
+        // This case exercises a covered copy with a stable mapping.
+        // Other GPU fixtures can be remapping unrelated pages concurrently.
+        super::copy_raw_title_using_mapping(dst, value.as_ptr() as usize, value.len(), || {
+            Some(crate::watch::title_memory_reading())
+        });
         let after = crate::watch::asked(dst, dst + PAGE);
         crate::watch::ask_once_end();
         let (asking, notes) = after.expect("the copy preserves the query");

@@ -96,6 +96,18 @@ mod safecopy;
 mod sampler;
 #[cfg(windows)]
 pub mod shader_cache;
+
+/// What `victory shaders` made of one shader that translates.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Precompiled {
+    /// Its entry was in the cache already.
+    Cached,
+    /// Translated now and written to the cache.
+    Translated,
+    /// Translated, but not on disk: why (a run would translate it again).
+    NotCached(String),
+}
+
 #[cfg(windows)]
 mod memory;
 #[cfg(windows)]
@@ -154,7 +166,7 @@ pub fn frames_begun() -> u64 {
 pub use inplace::{title_memory_freeing, title_memory_section, title_memory_section_gone, title_memory_view};
 #[cfg(windows)]
 pub use watch::{
-    kernel_writing, title_memory_allocated, title_memory_freed, title_memory_reading, title_memory_remapped,
-    title_memory_remapping, title_memory_splitting, title_memory_unmapping, title_memory_written,
-    writing as kernel_will_write,
+    kernel_writing, title_memory_allocated, title_memory_freed, title_memory_placeholder, title_memory_reading,
+    title_memory_remapped, title_memory_remapping, title_memory_splitting, title_memory_unmapping,
+    title_memory_written, writing as kernel_will_write,
 };

@@ -861,7 +861,19 @@ pub(crate) fn wanted_early(key: &str) -> bool {
     if *ALL.get_or_init(|| std::env::var_os("VICTORY_EARLY_ALL").is_some_and(|v| v == "1")) {
         return true;
     }
-    used().as_ref().is_some_and(|s| s.contains(key))
+    static EXTRA: OnceLock<HashSet<String>> = OnceLock::new();
+    let extra = EXTRA.get_or_init(|| {
+        let Some(path) = std::env::var_os("VICTORY_EARLY_PIPELINE_LIST") else { return HashSet::new() };
+        match std::fs::read_to_string(path) {
+            Ok(list) => list.lines().map(str::trim).filter(|k| k.len() == 32 && k.bytes().all(|b| b.is_ascii_hexdigit()))
+                .take(EARLY_MAX).map(str::to_ascii_lowercase).collect(),
+            Err(error) => {
+                tracing::warn!(%error, "could not read extra early pipeline keys");
+                HashSet::new()
+            }
+        }
+    });
+    extra.contains(key) || used().as_ref().is_some_and(|s| s.contains(key))
 }
 
 /// A draw or dispatch requested the title pipeline with `key`.

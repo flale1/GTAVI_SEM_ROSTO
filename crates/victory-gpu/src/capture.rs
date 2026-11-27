@@ -4,6 +4,7 @@
 //! size. Only in builds with diagnostics.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use windows::Win32::Graphics::Direct3D12::*;
 use windows::Win32::Graphics::Dxgi::Common::*;
@@ -19,6 +20,9 @@ pub(crate) fn folder() -> Option<&'static PathBuf> {
 /// Frames listed in `VICTORY_CAPTURE_FRAMES` (comma-separated): saved
 /// too, and their draws traced at debug level.
 pub(crate) fn listed(n: u64) -> bool {
+    if TRACE_FRAME.load(Ordering::Acquire) == n {
+        return true;
+    }
     static LIST: std::sync::OnceLock<Vec<u64>> = std::sync::OnceLock::new();
     let named = LIST
         .get_or_init(|| {
@@ -48,6 +52,35 @@ pub(crate) fn listed(n: u64) -> bool {
     let first = WORLD.load(std::sync::atomic::Ordering::Relaxed);
     let after = n.wrapping_sub(first);
     named || first != u64::MAX && ([2, 6, 30, 80].contains(&after) || also.contains(&after))
+}
+
+static TRACE_FRAME: AtomicU64 = AtomicU64::new(u64::MAX);
+
+fn scene_capture_on() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| crate::switch::on("VICTORY_CAPTURE_SCENE_BEFORE_FRAMEGEN"))
+}
+
+/// The title has reached a present. A trace request names the frame
+/// after it. The caller drains translation at both edges while operations
+/// are still numbered with the frame they belong to.
+pub(crate) fn trace_boundary(present: u64) -> bool {
+    if TRACE_FRAME.load(Ordering::Acquire) == present {
+        return true;
+    }
+    if !scene_capture_on() {
+        return false;
+    }
+    let (Some(folder), Some(frame)) = (folder(), present.checked_add(1)) else {
+        return false;
+    };
+    static TRIGGER: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    if std::fs::remove_file(TRIGGER.get_or_init(|| folder.join("scene-trace"))).is_err() {
+        return false;
+    }
+    TRACE_FRAME.store(frame, Ordering::Release);
+    tracing::info!(frame, "scene trace requested");
+    true
 }
 
 /// With a capture folder, for the frames [`listed`]: `what` is added to
@@ -142,8 +175,16 @@ pub(crate) fn frame_drew(frame: u64, drawn: u64) {
     }
 }
 
-/// Whether frame `n` is saved.
-pub(crate) fn wanted(n: u64) -> bool {
+/// Whether to save this present, and whether to keep its UI separate.
+pub(crate) fn requested(n: u64, listed: bool, framegen: bool) -> (bool, bool) {
+    let Some(folder) = folder() else { return (false, false) };
+    if scene_capture_on() {
+        static TRIGGER: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+        let scene = framegen && (
+            std::fs::remove_file(TRIGGER.get_or_init(|| folder.join("scene-next"))).is_ok() || listed
+        );
+        return (listed || scene, scene);
+    }
     // Before the world, with `VICTORY_CAPTURE_WORLD`: every 16th frame too
     // (small pictures of menus, loading screens and title cards).
     let before_world = world_on() && n.is_multiple_of(16) && WORLD.load(std::sync::atomic::Ordering::Relaxed) == u64::MAX;
@@ -152,25 +193,32 @@ pub(crate) fn wanted(n: u64) -> bool {
     // run, so single frames cannot be compared between runs).
     let first = WORLD.load(std::sync::atomic::Ordering::Relaxed);
     let in_world = world_on() && first != u64::MAX && n > first && (n - first).is_multiple_of(8);
-    folder().is_some() && (n.is_power_of_two() || listed(n) || before_world || in_world)
+    (n.is_power_of_two() || listed || before_world || in_world, false)
 }
 
-/// Saves 8-bit RGBA or BGRA rows (`pitch` bytes apart) as frame `n`.
-pub(crate) fn save(n: u64, width: u32, height: u32, pitch: usize, bgra: bool, rows: &[u8]) {
-    save_as(&format!("frame-{n}"), width, height, pitch, bgra, rows);
-}
-
-/// Saves 8-bit RGBA or BGRA rows as `<name>.png`, at half size.
-fn save_as(name: &str, width: u32, height: u32, pitch: usize, bgra: bool, rows: &[u8]) {
+/// Saves 8-bit RGBA or BGRA rows as `<name>.png`, sampling both axes at `step`.
+fn save_as(name: &str, width: u32, height: u32, pitch: usize, bgra: bool, rows: &[u8], step: usize) {
     let Some(folder) = folder() else { return };
-    let (w, h) = ((width / 2).max(1), (height / 2).max(1));
-    // Filter byte 0 per row, then RGB of every other pixel of every other row.
-    let mut raw = Vec::with_capacity((w as usize * 3 + 1) * h as usize);
-    for y in 0..h as usize {
+    let (w, h, raw) = pack_rgba_rows(width, height, pitch, bgra, rows, step);
+    write_aside(folder.join(format!("{name}.png")), w, h, raw);
+}
+
+/// Copies only the sampled pixels into an owned PNG scanline buffer.
+fn pack_rgba_rows(
+    width: u32,
+    height: u32,
+    pitch: usize,
+    bgra: bool,
+    rows: &[u8],
+    step: usize,
+) -> (u32, u32, Vec<u8>) {
+    let (w, h) = ((width as usize / step).max(1), (height as usize / step).max(1));
+    let mut raw = Vec::with_capacity((w * 3 + 1) * h);
+    for y in 0..h {
         raw.push(0);
-        let row = &rows[(2 * y).min(height as usize - 1) * pitch..];
-        for x in 0..w as usize {
-            let p = &row[(2 * x).min(width as usize - 1) * 4..][..3];
+        let row = &rows[step * y * pitch..];
+        for x in 0..w {
+            let p = &row[step * x * 4..][..3];
             if bgra {
                 raw.extend([p[2], p[1], p[0]]);
             } else {
@@ -178,7 +226,7 @@ fn save_as(name: &str, width: u32, height: u32, pitch: usize, bgra: bool, rows: 
             }
         }
     }
-    write_aside(folder.join(format!("{name}.png")), w, h, raw);
+    (w as u32, h as u32, raw)
 }
 
 /// A picture to pack and write: its file, width, height and filtered rows.
@@ -474,6 +522,7 @@ fn read_back_of(
 /// Saves a frame read back by [`read_back`] (8-bit color only).
 pub(crate) fn save_read_back(
     frame: u64,
+    scene: bool,
     buffer: &ID3D12Resource,
     footprint: &D3D12_PLACED_SUBRESOURCE_FOOTPRINT,
 ) {
@@ -487,17 +536,54 @@ pub(crate) fn save_read_back(
         }
     };
     let mut data = std::ptr::null_mut();
-    // SAFETY: the copy finished (every submission is waited for); the
-    // mapping spans the footprint's rows.
+    // SAFETY: the copy finished (the capture forces a synchronous submission).
+    // The footprint is checked against the buffer before slicing its mapping.
     unsafe {
+        let Some(range) = rgba_readback_range(
+            footprint.Offset,
+            f.Width,
+            f.Height,
+            f.RowPitch,
+            buffer.GetDesc().Width,
+        ) else {
+            tracing::warn!(frame, "frame not saved: invalid readback footprint");
+            return;
+        };
         if buffer.Map(0, None, Some(&mut data)).is_err() {
             return;
         }
-        let len = f.RowPitch as usize * f.Height as usize;
-        let rows = std::slice::from_raw_parts(data.cast::<u8>(), len);
-        save(frame, f.Width, f.Height, f.RowPitch as usize, bgra, rows);
+        let pitch = f.RowPitch as usize;
+        let rows = std::slice::from_raw_parts(data.cast::<u8>().add(range.start), range.len());
+        let (name, step) = if scene {
+            (format!("scene-{frame}"), 1)
+        } else {
+            (format!("frame-{frame}"), 2)
+        };
+        save_as(&name, f.Width, f.Height, pitch, bgra, rows, step);
         buffer.Unmap(0, None);
     }
+}
+
+fn rgba_readback_range(
+    offset: u64,
+    width: u32,
+    height: u32,
+    pitch: u32,
+    buffer_size: u64,
+) -> Option<std::ops::Range<usize>> {
+    let row_bytes = u64::from(width) * 4;
+    if row_bytes == 0 || row_bytes > u64::from(pitch) {
+        return None;
+    }
+    // GetCopyableFootprints does not require padding after the final row.
+    let rows_before_last = u64::from(height.checked_sub(1)?);
+    let end = offset
+        .checked_add(rows_before_last * u64::from(pitch))?
+        .checked_add(row_bytes)?;
+    if end > buffer_size || end > isize::MAX as u64 {
+        return None;
+    }
+    Some(offset as usize..end as usize)
 }
 
 /// With `VICTORY_DUMP_TARGETS` set: title textures the frames listed in
@@ -621,7 +707,7 @@ fn dump_one(
                 "frame-{frame}-{i:02}-{resource:?}-{}x{}-f{}",
                 d.Width, d.Height, d.Format.0
             );
-            save_as(&name, f.Width, f.Height, f.Width as usize * 4, false, &rgba);
+            save_as(&name, f.Width, f.Height, f.Width as usize * 4, false, &rgba, 2);
         } else {
             tracing::info!(format = f.Format.0, ?resource, "target not dumped: format");
         }
@@ -1021,6 +1107,32 @@ pub(crate) fn recent_levels() -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn rgba_capture_respects_the_placement_and_unpadded_last_row() {
+        let range = super::rgba_readback_range;
+        assert_eq!(range(512, 3, 2, 256, 780), Some(512..780));
+        assert_eq!(range(512, 3, 2, 256, 779), None);
+        assert_eq!(range(0, 1, 1, 256, 4), Some(0..4));
+        assert_eq!(range(0, 3, 0, 256, 780), None);
+        assert_eq!(range(0, 3, 2, 8, 780), None);
+        assert_eq!(range(u64::MAX, 1, 1, 256, u64::MAX), None);
+    }
+
+    #[test]
+    fn scene_pixels_are_owned_and_preserve_native_resolution() {
+        let mut readback = [
+            255, 255, 255, 255, // space before the footprint
+            3, 2, 1, 0, 6, 5, 4, 0, 255, 255, 255, 255, // first row and padding
+            9, 8, 7, 0, 12, 11, 10, 0, // last row, without trailing padding
+        ];
+        let range = super::rgba_readback_range(4, 2, 2, 12, readback.len() as u64).unwrap();
+        let scene = super::pack_rgba_rows(2, 2, 12, true, &readback[range.clone()], 1);
+        let preview = super::pack_rgba_rows(2, 2, 12, true, &readback[range], 2);
+        readback.fill(0);
+        assert_eq!(scene, (2, 2, vec![0, 1, 2, 3, 4, 5, 6, 0, 7, 8, 9, 10, 11, 12]));
+        assert_eq!(preview, (1, 1, vec![0, 1, 2, 3]));
+    }
+
     #[test]
     fn crc_matches_the_png_check_value() {
         assert_eq!(super::crc32(b"IEND"), 0xae42_6082);
