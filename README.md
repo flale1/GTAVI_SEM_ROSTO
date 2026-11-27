@@ -45,6 +45,7 @@ Requisitos: Windows 10/11 x64, CPU com AVX2, placa Direct3D 12 com Shader Model 
 | O log diz o estágio e o tamanho de cada shader recusado | nosso |
 | Do [Belobug/VIctory-Belobug-AMD](https://github.com/Belobug/VIctory-Belobug-AMD): sombras em cascata certas na NVIDIA (wave32), interpolação por atributo, luz dos cômodos estabilizada pelo tempo, janelas limitadas quando a RAM aperta, busca rápida na submissão, uma barreira por buffer | `4fd34fd`, `0dc5d1b`, `b4ba4bb`, `ffc2cf6`, `306722b`, `773d902` e outros |
 | Shaders: leitura de primeira lane em lanes auxiliares (upstream `0601955`), buffers e imagens lidos só como dado (port parcial do corgi `53e7682`), pares wave32 e diagnóstico das duas recusas de água (VIctory-NVIDIA `f110b577`, fxceless `9613092b`) | `7886b8c9`, `bb2aaaa2`, `1511ab06`, `7df8e2cf`, `8a1932a6` |
+| Do avatarmanz novo: operação de máscara sobre número lido como dado, e endereço de view escolhida por índice calculado. 5 shaders que não traduziam passam a traduzir (213 sem tradução, eram 218) | `9445a5cb` (`d1f883ec`), `5485384e` (`027e367a`) |
 | Do Belobug, desligado por padrão (testar): Port 1, a memória gráfica do jogo usada direto, menos CPU | `86dc109`, `4b82f6c`, com `VICTORY_PORT_CONSTANTS=1` |
 
 A lista completa de commits está em [`MUDANCAS.txt`](MUDANCAS.txt) e o código completo em [`source/`](source).

@@ -1,3 +1,7 @@
+5485384e 2026-11-25 local
+    Shaders and GPU: the address of a view picked at a computed index, from the host
+9445a5cb 2026-11-26 local
+    Shaders: mask operations on a joined number, read as data, are its number
 1511ab06 2026-11-27 cccw
     Image descriptors read only for their size dwords (partial port)
 8a1932a6 2026-11-26 fxceless
