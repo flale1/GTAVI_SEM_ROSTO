@@ -14,7 +14,8 @@
 # -Machine      auto (the default: by GPU vendor, with NVIDIA worker counts sized to the CPU),
 #               7900xtx, 4070, 4070tisuper, 4090, 3060 or laptop
 #               (3060: a six-core NVIDIA desktop with 16 GB of RAM and a 12 GB card, docs/rtx3060-16gb.md;
-#               laptop: an NVIDIA PC with 16 GB of RAM and a 6-8 GB card, docs/laptop-16gb.md)
+#               laptop: an NVIDIA PC with 16 GB of RAM and a 6-8 GB card, docs/laptop-16gb.md;
+#               4060ti: RTX 4060 Ti 8 GB, eight-core CPU, 24 GB of RAM - a starting point, not measured)
 # -More         other settings: -More @{VICTORY_PANEL='1'} or -More @{VICTORY_AMBIENT='1.0'}
 # On a smaller NVIDIA PC, compare the same Series S scene after a fresh start
 # with one override at a time, e.g. -More @{VICTORY_LAND_THREADS='3'} for
@@ -34,7 +35,7 @@ param(
     [ValidateSet('quality', 'balanced', 'performance')][string]$Fsr4K,
     [ValidateSet('quality', 'balanced', 'performance')][string]$Dlss4K,
     [ValidateSet('diag', 'release')][string]$Build = 'diag',
-    [ValidateSet('auto', '7900xtx', '4070', '4070tisuper', '4090', '3060', 'laptop')][string]$Machine = 'auto',
+    [ValidateSet('auto', '7900xtx', '4070', '4070tisuper', '4090', '3060', 'laptop', '4060ti')][string]$Machine = 'auto',
     [hashtable]$More = @{}
 )
 $settings = @{
@@ -168,6 +169,20 @@ if ($Machine -eq 'laptop') {
     $settings.VICTORY_OUTPUT = '1920x1080'; $settings.VICTORY_UPSCALER = '6'; $settings.VICTORY_RENDER_SCALE = '0.5'
     # No RAM throttle and no change to the title's watchdog here: the world load fits with the
     # settings above (docs/laptop-16gb.md); for longer sessions see #96 and #126 there.
+}
+if ($Machine -eq '4060ti') {
+    # RTX 4060 Ti 8 GB (PCIe 4.0 x8), Ryzen 7 5700X (eight cores), 24 GB. Not measured yet: a
+    # starting point from the 3060, laptop and trustno1-coder notes. Threads sized to eight cores
+    # (12/8/6 starved the pipeline compilers); buffer copies in the card at ~18 % of its budget
+    # (256-512 MB read the rest over the bus: 3 fps on a 4070 SUPER, 21-25 at 2 GB); a working-set
+    # ceiling above what the world load commits; helpers at the submitting thread's priority; and
+    # the pipeline book on, so `victory warm --used` can make every pipeline before the next start.
+    $settings.VICTORY_THIN_THREADS = '8'; $settings.VICTORY_UNDER_THREADS = '6'; $settings.VICTORY_LAND_THREADS = '4'
+    $settings.VICTORY_PIPELINE_WORKERS = '4'; $settings.VICTORY_HELPER_PRIORITY = '1'
+    $settings.VICTORY_PIPELINE_BOOK = '1'
+    $settings.VICTORY_CARD_BUFFERS_MB = '1300'; $settings.VICTORY_WINDOWS_BAR_MB = '2048'
+    $settings.VICTORY_WORKING_SET_MB = '16000'
+    if (-not $Safe) { $settings.VICTORY_MAP_THREADS = 'auto' }
 }
 # -Safe leaves out every way still on trial, and the newest faster ones.
 if ($Safe) {

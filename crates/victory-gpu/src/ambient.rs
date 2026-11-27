@@ -586,6 +586,10 @@ void raise(uint3 at : SV_DispatchThreadID) {
     float left = dot(was, LUMA);
     // Magenta (green far below red and blue) is what the probes' memory held, not light.
     if (was.g < 0.5 * min(was.r, was.b) && max(was.r, was.b) > 0.02) was = 0.0;
+    // And the bluer kind of it (blue over 2.5x green and over red): left as a
+    // faint violet by the line above. The sky's light keeps green above 0.4x
+    // blue, sunsets keep blue low, so neither is touched (trustno1 826ba15).
+    if (was.b > 2.5 * was.g && was.b > was.r && was.b > 0.02) was = 0.0;
     // What the program left counts as far as it can be true: the sky's light
     // outdoors, not the blocks of other memory.
     // For `fresh` seconds after the light around jumped (a new room) the
