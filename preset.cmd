@@ -56,7 +56,7 @@ rem registra os pipelines que o jogo cria, para o Aquecer-Driver.cmd prepara-los
 if not defined VICTORY_PIPELINE_BOOK set "VICTORY_PIPELINE_BOOK=1"
 rem LDS aproximado em grupos de 32 (port do victory-corgi): faz 5 shaders de calculo recusados na NVIDIA funcionarem (entra na chave do cache)
 if not defined VICTORY_WAVE_LOOSE_LDS set "VICTORY_WAVE_LOOSE_LDS=1"
-rem console wave de 64 rodando como duas waves de 32 da NVIDIA, com barreiras de grupo (entra na chave do cache):
-rem shaders de calculo que ficavam em 64 e eram recusados (agua em blocos pretos) passam a rodar. Pode deixar manchas
-rem escuras na agua e ja derrubou o driver em testes do fxceless. Se a tela travar: $env:VICTORY_WAVE_WIDE = '0' e Preparar-Shaders.
-if not defined VICTORY_WAVE_WIDE set "VICTORY_WAVE_WIDE=1"
+rem VICTORY_WAVE_WIDE=0 (entra na chave do cache): desliga as formas com barreira de grupo dentro de ramo
+rem (widen e wave-wide). Com =1 a placa travou (TDR, nvlddmkm 153) num RTX 4060 Ti e num 5070 Ti.
+rem A divisao de LDS em waves de 32 (agua) nao depende dela e continua.
+if not defined VICTORY_WAVE_WIDE set "VICTORY_WAVE_WIDE=0"
