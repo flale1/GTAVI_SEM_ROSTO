@@ -185,6 +185,14 @@ if ($Machine -eq '4060ti') {
     # 1080p out whatever the title's settings.xml asks (it had 3840x2160: with DLSS quality the
     # title then drew 2560x1440, too much for an 8 GB card). Override with -More VICTORY_OUTPUT.
     $settings.VICTORY_OUTPUT = '1920x1080'
+    # Less RAM (the 11-27 run reached 18.7 GB private with 0.3-0.6 GB left to commit): the laptop
+    # preset's measured RAM settings - game files past Windows' file cache, title buffers used in
+    # place, windows cut on 64 KiB with their tails, texture levels given memory as written. Kept
+    # under -Safe too, as on the laptop. Windows go to the card's memory through Resizable BAR only
+    # while a fifth of its budget is free, which the 1080p output above leaves room for.
+    $settings.VICTORY_DSTORAGE_IO = 'direct'; $settings.VICTORY_INPLACE = '2'
+    $settings.VICTORY_WINDOW_KB = '64'; $settings.VICTORY_WINDOW_TAILS = '1'
+    $settings.VICTORY_LEVELS_ON_DEMAND = '1'
     if (-not $Safe) { $settings.VICTORY_MAP_THREADS = 'auto' }
 }
 # -Safe leaves out every way still on trial, and the newest faster ones.
