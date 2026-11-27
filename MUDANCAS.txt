@@ -1,3 +1,11 @@
+918577af 2026-11-26 VItoriaBr CEO (local)
+    GPU: log the translation cache key once per run
+f9dff7e2 2026-11-26 VItoriaBr CEO (local)
+    Shaders: WAVE_WHY line per translated program
+d36e6158 2026-11-26 VItoriaBr CEO (local)
+    Shaders: one host wave switch name, and the key the precompile used
+4ab31514 2026-11-26 VItoriaBr CEO (local)
+    Precompile: no cache entries without a host device
 5485384e 2026-11-25 local
     Shaders and GPU: the address of a view picked at a computed index, from the host
 9445a5cb 2026-11-26 local
