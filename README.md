@@ -43,6 +43,7 @@ Requisitos: Windows 10/11 x64, CPU com AVX2, placa Direct3D 12 com Shader Model 
 - Base: VIctory-8GB-v6 (renderiza bem em placas de 8 GB; os shaders de cálculo de 64 lanes sem forma de 32 deixam de ser usados, em vez de travar a placa).
 - Por cima: upscaler e escala de render, slots de descritor, rostos em NVIDIA, modo de pouca RAM, as correções de shader (água e lanes em waves de 32, descritores, permlane16, LDS aproximado), os diagnósticos e os shaders do avatarmanz novo. No dump, só 4 shaders de cálculo ficam de fora (eram 6 na v6 pura).
 - Sombras em cascata exatas na NVIDIA (port do Belobug `4fd34fd`, nosso `c4870fce`): sem os blocos pretos perto da câmera no Series S.
+- Do Belobug e do cool_fox, de volta por cima do v6: interpolação por atributo, luz ambiente estabilizada pelo tempo, uma barreira por card buffer, janelas limitadas quando a RAM aperta e o resto da linha anterior (`d62c2964`).
 - Memória: com `VICTORY_LOW_RAM=1` (já no preset) os blocos ociosos de textura caem de 4 GB para 512 MB. `VICTORY_MEM_LOG=1` grava no log, a cada 30 s, onde está a RAM.
 
 ## O que muda em relação ao avatarmanz 85d5641
