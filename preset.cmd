@@ -15,8 +15,9 @@ if not defined VICTORY_COMMIT_GB set "VICTORY_COMMIT_GB=0"
 if %VICTORY_VRAM_GB% GEQ 12 if not defined VICTORY_CARD_BUFFERS_MB set "VICTORY_CARD_BUFFERS_MB=4096"
 rem preset base do fork avatarmanz (scripts\play.ps1)
 if not defined VICTORY_TEXTURE_NO_WAIT set "VICTORY_TEXTURE_NO_WAIT=1"
-rem modo liso (config testada no RTX 5070 Ti): relay no estagio 1, passos na placa desligados, pouca RAM sempre
-if not defined VICTORY_RELAY set "VICTORY_RELAY=1"
+rem modo liso (config testada no RTX 5070 Ti): passos na placa desligados, pouca RAM sempre. O relay fica no estagio 2:
+rem o estagio 1 (VICTORY_RELAY=1) derrubou a placa ("device removed after 7 submissions sent ahead") num RTX 4060 Ti.
+if not defined VICTORY_RELAY set "VICTORY_RELAY=2"
 if not defined VICTORY_LOW_RAM set "VICTORY_LOW_RAM=1"
 if not defined VICTORY_WIDE_BACK set "VICTORY_WIDE_BACK=1"
 if not defined VICTORY_CARD_REHASH_RUNS set "VICTORY_CARD_REHASH_RUNS=1"

@@ -24,7 +24,7 @@ Clique em **Code → Download ZIP** nesta página. O zip traz o `victory.exe`, o
    ```
 5. O pacote mede a RAM e a VRAM sozinho (`hw.ps1`) e ajusta o preset:
    - **12 GB de VRAM ou mais**: 4 GB de buffers na placa.
-   - O padrão é o **modo liso** (testado num RTX 5070 Ti): Series S, pouca RAM (`VICTORY_LOW_RAM=1`), texturas sem espera, relay no estágio 1 (`VICTORY_RELAY=1`) e passos na placa desligados (`VICTORY_CARD_STEPS=0`). Para mais detalhe, use o `Play-SeriesX.cmd` (chega a 38 GB de RAM; com limite de memória abaixo de 48 GB, aumente a paginação).
+   - O padrão é o **modo liso** (testado num RTX 5070 Ti): Series S, pouca RAM (`VICTORY_LOW_RAM=1`), texturas sem espera, passos na placa desligados (`VICTORY_CARD_STEPS=0`). Para mais detalhe, use o `Play-SeriesX.cmd` (chega a 38 GB de RAM; com limite de memória abaixo de 48 GB, aumente a paginação).
    - Se o limite for menor do que o perfil precisa (Series S: 32 GB, Series X: 48 GB), o `Play-VIctory.cmd` avisa. Para aumentar o arquivo de paginação: Exibir configurações avançadas do sistema → Desempenho → Configurações → Avançado → Memória virtual → Alterar → desmarque "Gerenciar automaticamente" → C: → Tamanho personalizado, inicial `32768` e máximo `49152` → Definir → reinicie.
    - Com 12-16 GB de VRAM também dá para subir a resolução: `$env:VICTORY_RENDER_SCALE = '0.75'`.
 6. Se der bug, rode o diagnóstico. Ele grava o log completo e a memória, e gera um zip para enviar:

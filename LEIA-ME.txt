@@ -38,7 +38,7 @@ Licença: GPL-3.0-or-later, como o VIctory (ver LICENSE e asset-policy.md).
 Código-fonte deste build: pasta source\
 - o zip tem a árvore completa;
 - o histórico está em MUDANCAS.txt e em https://github.com/flale1/VIctory-7900XTX (branch series-s-lowram).
-Ajuste automático (hw.ps1): com 12 GB de VRAM ou mais, 4 GB de buffers na placa. Padrao: modo liso (Series S, VICTORY_LOW_RAM=1, VICTORY_RELAY=1, VICTORY_CARD_STEPS=0). Series X: Play-SeriesX.cmd.
+Ajuste automático (hw.ps1): com 12 GB de VRAM ou mais, 4 GB de buffers na placa. Padrao: modo liso (Series S, VICTORY_LOW_RAM=1, VICTORY_CARD_STEPS=0). Series X: Play-SeriesX.cmd.
 Depois de atualizar, rode o Preparar-Shaders.cmd de novo.
 Créditos: Marvisak/VIctory e colaboradores, fxceless, avatarmanz, trustno1-coder, myokex, Belobug, uiliannn e demais forks citados no histórico.
 
