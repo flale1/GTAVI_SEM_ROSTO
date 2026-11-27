@@ -2,9 +2,8 @@
 rem Preset comum do Play-VIctory.cmd e do Preparar-Shaders.cmd. As variaveis que entram na chave do cache
 rem de shaders (BVH_MISS, NAN_SCRUB) TEM que ser iguais nos dois, senao o cache preparado nao e usado.
 rem Toda variavel ja definida antes (set ou $env:) vence o valor daqui.
-rem Placa e RAM: com 12 GB de VRAM ou mais, mais buffers na placa e texturas esperadas (sem rastro ao girar a camera);
-rem com 12 GB de VRAM ou mais, perfil Series X (o jogo nao descarta o que fica para tras). O Series X chega a 38 GB:
-rem com limite de memoria (RAM + arquivo de paginacao) menor, o Play-VIctory.cmd avisa.
+rem Placa e RAM: com 12 GB de VRAM ou mais, 4 GB de buffers na placa. O perfil padrao e o Series S, que no 5070 Ti
+rem ficou bem mais liso que o Series X; o Series X fica no Play-SeriesX.cmd.
 if not defined VICTORY_RAM_GB for /f "tokens=1,2,3" %%a in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0hw.ps1"') do (
   set "VICTORY_RAM_GB=%%a"
   set "VICTORY_VRAM_GB=%%b"
@@ -14,17 +13,17 @@ if not defined VICTORY_RAM_GB set "VICTORY_RAM_GB=0"
 if not defined VICTORY_VRAM_GB set "VICTORY_VRAM_GB=0"
 if not defined VICTORY_COMMIT_GB set "VICTORY_COMMIT_GB=0"
 if %VICTORY_VRAM_GB% GEQ 12 if not defined VICTORY_CARD_BUFFERS_MB set "VICTORY_CARD_BUFFERS_MB=4096"
-if %VICTORY_VRAM_GB% GEQ 12 if not defined VICTORY_TEXTURE_NO_WAIT set "VICTORY_TEXTURE_NO_WAIT=0"
-if %VICTORY_VRAM_GB% GEQ 12 if not defined VICTORY_CONSOLE set "VICTORY_CONSOLE=series-x"
 rem preset base do fork avatarmanz (scripts\play.ps1)
 if not defined VICTORY_TEXTURE_NO_WAIT set "VICTORY_TEXTURE_NO_WAIT=1"
-if not defined VICTORY_RELAY set "VICTORY_RELAY=2"
+rem modo liso (config testada no RTX 5070 Ti): relay no estagio 1, passos na placa desligados, pouca RAM sempre
+if not defined VICTORY_RELAY set "VICTORY_RELAY=1"
+if not defined VICTORY_LOW_RAM set "VICTORY_LOW_RAM=1"
 if not defined VICTORY_WIDE_BACK set "VICTORY_WIDE_BACK=1"
 if not defined VICTORY_CARD_REHASH_RUNS set "VICTORY_CARD_REHASH_RUNS=1"
 if not defined VICTORY_JOIN_COPIES set "VICTORY_JOIN_COPIES=1"
 if not defined VICTORY_INDIRECT_WINDOW set "VICTORY_INDIRECT_WINDOW=1"
 if not defined VICTORY_RELAY_COPY set "VICTORY_RELAY_COPY=1"
-if not defined VICTORY_CARD_STEPS set "VICTORY_CARD_STEPS=2"
+if not defined VICTORY_CARD_STEPS set "VICTORY_CARD_STEPS=0"
 if not defined VICTORY_INDIRECT_BATCH set "VICTORY_INDIRECT_BATCH=2"
 if not defined VICTORY_MAP_THREADS set "VICTORY_MAP_THREADS=1"
 if not defined VICTORY_TITLE_PRIORITIES set "VICTORY_TITLE_PRIORITIES=0"
