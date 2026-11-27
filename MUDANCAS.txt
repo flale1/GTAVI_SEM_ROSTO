@@ -1,76 +1,76 @@
-3d045a33 2026-11-26 gomeaw
-    Check the final LDS flag from every lane on a 32-lane adapter
-f3aeee5a 2026-11-25 FrancescoGelosoEterea
-    Shaders: a lane-branch region that only raises an LDS flag runs as two host waves
-9253660e 2026-11-25 justrealyme
-    Shaders: first-lane reads of values alike in a console wave, under conditions alike in it
-dcb0b30e 2026-11-25 lcg007xd-c
-    Shaders: v_permlane16/v_permlanex16 ask for the console's lanes (#79)
-a837ba09 2026-11-26 VItoriaBr CEO (local)
+caf17d2f 2026-11-27 VItoriaBr CEO (local)
+    Pool: spare-limit tests pass the kept count
+ef501a65 2026-11-27 VItoriaBr CEO (local)
+    GPU: idle texture and staging blocks cut under VICTORY_LOW_RAM
+1b2aa0d2 2026-11-27 VItoriaBr CEO (local)
+    GPU: VICTORY_MEM_LOG=1 memory line every 30 s
+200cd382 2026-11-27 VItoriaBr CEO (local)
+    Shaders: test HostShader literal takes the view's half_views
+baa10c4a 2026-11-26 Fuzeofficial
+    Shaders: test s_bfe_u32 and s_bfe_i32 literal, width, and SCC cases (#2060)
+ee557388 2026-11-25 slatefield
+    Shaders: walk a live set's registers a bit at a time (#1833)
+d29d9a42 2026-11-26 给伊莉雅补魔
+    Shaders: add SQ_IMG_SAMP LOD-bias and no-mip range tests for emit/sampler.rs (#1195)
+e1f48bff 2026-11-25 Luiz Gustavo Benicio Neves
+    Shaders: hardware test for the s_cmpk_* scalar comparisons (#1046)
+d5bd188e 2026-11-25 local
+    Shaders: a level query takes no array slice (after VIctory 13091f6e)
+844748bc 2026-11-25 local
+    Shaders: native code stored without its XBCH wrapper (XDAT kind 0x0c)
+ef32ec4a 2026-11-26 VItoriaBr CEO (local)
+    Shaders: WAVE64-PROGRAM names a widened form that made the translation
+f813c1bc 2026-11-26 VItoriaBr CEO (local)
+    Pipeline library: no more saves once the disk is full
+be6515ab 2026-11-26 VItoriaBr CEO (local)
     Shaders: WAVE64-PROGRAM says the declared WaveSize and why 64-lane waves stay
-918577af 2026-11-26 VItoriaBr CEO (local)
+d5ade711 2026-11-26 VItoriaBr CEO (local)
     GPU: log the translation cache key once per run
-f9dff7e2 2026-11-26 VItoriaBr CEO (local)
+cffc0118 2026-11-26 VItoriaBr CEO (local)
     Shaders: WAVE_WHY line per translated program
-d36e6158 2026-11-26 VItoriaBr CEO (local)
+1a1a18ab 2026-11-26 VItoriaBr CEO (local)
     Shaders: one host wave switch name, and the key the precompile used
-4ab31514 2026-11-26 VItoriaBr CEO (local)
+f90ec5ca 2026-11-26 VItoriaBr CEO (local)
     Precompile: no cache entries without a host device
-5485384e 2026-11-25 local
-    Shaders and GPU: the address of a view picked at a computed index, from the host
-9445a5cb 2026-11-26 local
-    Shaders: mask operations on a joined number, read as data, are its number
-1511ab06 2026-11-27 cccw
-    Image descriptors read only for their size dwords (partial port)
-8a1932a6 2026-11-26 fxceless
-    Translation diagnostics for the two refused 64-lane water programs (5dc3b25986622949, 6f225b641c5b0708)
-7df8e2cf 2026-11-26 Jeremy Goldberg
-    feat(diagnostics): load matching paired Wave32 shaders
-7886b8c9 2026-11-25 beloooo
-    A helper lane's v_readfirstlane reads its own value (upstream 0601955)
-bb2aaaa2 2026-11-26 VItoriaBr CEO (local)
-    Buffer views read only as data: record count from the host view (partial port)
-814bb515 2026-11-26 VItoriaBr CEO (local)
+ad5e46f5 2026-11-26 VItoriaBr CEO (local)
     VICTORY_SKIP_PIPELINES accepts @file (diagnostics)
-ca4005e9 2026-11-26 VItoriaBr CEO (local)
-    Approximate LDS in 32-lane lane branches, off by default (VICTORY_WAVE_LOOSE_LDS=1)
-167b2b35 2026-11-26 VItoriaBr CEO (local)
-    VICTORY_CACHE_CORES off by default (neutral on unknown CPUs)
-e5ff92c0 2026-11-25 local
-    Merge fps/ask: a submission's asked ranges looked up by binary search; the memory-map walk every 5 min
-ef266289 2026-11-26 local
-    coolfox fabb872a/641835a4: XMA voices refilled after their end (VICTORY_XMA_REFILL=1); DirectStorage staging floor (VICTORY_DSTORAGE_STAGING_MB)
-598ca166 2026-11-26 local
-    GPU: cap idle windows under system-RAM pressure
-a82ccf33 2026-11-26 Jake
-    Our threads prefer the cores of the largest last-level cache where all cores are of one class (VICTORY_CACHE_CORES, on; 0: not)
-c2e66592 2026-11-26 local
-    coolfox 641835a4: one barrier per card buffer after its copies, however many copies lie in it
-177356e3 2026-11-25 local
-    Renderer port 1: the 32-bit heap's pages get their section's slices in address order
-7ce956e5 2026-11-25 local
-    Renderer port 1: the title's 32-bit graphics heap used in place (VICTORY_PORT_CONSTANTS=1, off by default)
-9b6f2671 2026-11-26 local
-    Light and texture probes; the stand-in's slow mean by the clock (VICTORY_AMBIENT_SETTLE, off)
-6f54f43f 2026-11-26 sawetco
-    Shaders: translate tiled cascade shadows exactly on wave32 hosts
-051f801f 2026-11-25 local
-    Shaders: one interpolation mode per signature row (after VIctory 13091f6e)
-23f1d3c5 2026-11-26 VItoriaBr CEO (local)
+5b0d613c 2026-11-26 VItoriaBr CEO (local)
     host pipeline refusals name their stage and code size
-3377b414 2026-11-26 VItoriaBr CEO (local)
-    NVIDIA faces: 16-bit values read through integer views (port of 77e13a9, faces part)
-01b81c1d 2026-11-26 VItoriaBr CEO (local)
+a10ab9d7 2026-11-26 VItoriaBr CEO (local)
+    Approximate LDS in 32-lane lane branches, off by default (VICTORY_WAVE_LOOSE_LDS=1)
+2f3c5856 2026-11-27 cccw
+    Image descriptors read only for their size dwords (partial port)
+986523d3 2026-11-26 VItoriaBr CEO (local)
+    Buffer views read only as data: record count from the host view (partial port)
+e55f5c72 2026-11-25 beloooo
+    A helper lane's v_readfirstlane reads its own value (upstream 0601955)
+c344e1e7 2026-11-26 gomeaw
+    Check the final LDS flag from every lane on a 32-lane adapter
+365e4d0d 2026-11-25 FrancescoGelosoEterea
+    Shaders: a lane-branch region that only raises an LDS flag runs as two host waves
+447a069a 2026-11-25 justrealyme
+    Shaders: first-lane reads of values alike in a console wave, under conditions alike in it
+1028e5a8 2026-11-25 lcg007xd-c
+    Shaders: v_permlane16/v_permlanex16 ask for the console's lanes (#79)
+ce36d7fc 2026-11-26 local
+    Shaders: mask operations on a joined number, read as data, are its number
+e5166f94 2026-11-25 local
+    Shaders and GPU: the address of a view picked at a computed index, from the host
+4d05b645 2026-11-26 VItoriaBr CEO (local)
     low ram: scratch chunks keep 128 MiB under VICTORY_LOW_RAM
-071580f2 2026-11-26 VItoriaBr CEO (local)
+67957d14 2026-11-26 VItoriaBr CEO (local)
     low ram: snapshot pool keeps 128 MiB under VICTORY_LOW_RAM
-13cb0518 2026-11-26 VItoriaBr CEO (local)
+dba6f977 2026-11-26 VItoriaBr CEO (local)
     low ram: 1 MiB window grid under VICTORY_LOW_RAM
-0aaa5d6f 2026-11-26 VItoriaBr CEO (local)
+703546fe 2026-11-26 VItoriaBr CEO (local)
     low ram: shorter keep times for host caches under VICTORY_LOW_RAM
-22232ea4 2026-11-25 trustno1-coder
-    Loader: render scale, own upscaler and watchdog title patches
-4ae3c6ab 2026-11-25 trustno1-coder
+beaa9c3f 2026-11-26 VItoriaBr CEO (local)
+    NVIDIA faces: 16-bit values read through integer views (port of 77e13a9, faces part)
+b9ab3238 2026-11-25 trustno1-coder
     NVIDIA: VICTORY_DYNAMIC_SLOTS on a capped view heap (stops dropped draws)
-c31838b5 2026-11-25 trustno1-coder
-    NVIDIA: more dynamic descriptor slots; Series S interface plane (compose)
+8259442f 2026-11-25 trustno1-coder
+    Loader: render scale, own upscaler and watchdog title patches
+394832fb 2026-11-27 VItoriaBr CEO (local)
+    v6 package source (VIctory-8GB-v6 codigo-fonte.zip, SHA256 43931ce190f31c58803d0edb861cbd8a38a1c6da7e21b833adbd2e8b19efac7a), base cool_fox f4b48ad
+874b47fe 2026-11-27 VItoriaBr CEO (local)
+    v5 package source (VIctory-8GB-v5 codigo-fonte.zip, SHA256 56f049fa36cafcbdb2c42fa8653a7cdbe25848069f54cba878f7facdd80d6c19), base cool_fox f4b48ad

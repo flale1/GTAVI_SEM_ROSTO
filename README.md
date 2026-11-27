@@ -1,14 +1,18 @@
 # VIctory Series S para pouca RAM e NVIDIA
 
-Build do [VIctory](https://github.com/Marvisak/VIctory) (camada que roda um título de Xbox Series no Windows) ajustado para PCs com 24 GB de RAM e placas NVIDIA. A base é o fork [avatarmanz/VIctory-7900XTX](https://github.com/avatarmanz/VIctory-7900XTX) no commit `85d5641`.
+Build do [VIctory](https://github.com/Marvisak/VIctory) (camada que roda um título de Xbox Series no Windows) ajustado para PCs com 24 GB de RAM e placas NVIDIA. Desde 27/11 a base é o **VIctory-8GB-v6** (fork do cool_fox, sobre o [avatarmanz/VIctory-7900XTX](https://github.com/avatarmanz/VIctory-7900XTX) `0a435665`), com as nossas correções por cima (lista em `MUDANCAS.txt`).
 
 **Este repositório não contém arquivos do jogo.** Você precisa do seu próprio dump.
 
 ## Download
 
-Clique em **Code → Download ZIP** nesta página. O zip traz o `victory.exe`, o lançador e o código-fonte completo (em `source/`). O código em Rust, com histórico, também está em [flale1/VIctory-7900XTX](https://github.com/flale1/VIctory-7900XTX) (branch `series-s-lowram`).
+Clique em **Code → Download ZIP** nesta página. O zip traz o `victory.exe`, o lançador e o código-fonte completo (em `source/`). O código em Rust, com histórico, também está em [flale1/VIctory-7900XTX](https://github.com/flale1/VIctory-7900XTX) (branch `v6-ours`).
 
-## Como rodar
+## Jeito fácil: Jogar-VIctory.exe
+
+Extraia o zip dentro da pasta do seu dump (ao lado do `game_scarlett_master.exe`) e dê dois cliques em **`Jogar-VIctory.exe`**. Ele acha o jogo sozinho (ou pergunta a pasta uma vez) e tem um botão para cada passo: preparar shaders, jogar em Series S ou Series X, aquecer o driver, gerar o diagnóstico e abrir a pasta dos saves. Na primeira vez, clique em **1. Preparar shaders** e depois em **2. Jogar**. O código do lançador está em `launcher/`. Por ser um exe novo e sem assinatura, o Windows pode mostrar "O Windows protegeu o computador": clique em **Mais informações → Executar assim mesmo**.
+
+## Como rodar pelos scripts
 
 1. Instale o Microsoft Visual C++ Redistributable x64 (2015-2022).
 2. Extraia o zip dentro da pasta do seu dump, ao lado do `game_scarlett_master.exe`.
@@ -33,6 +37,12 @@ Clique em **Code → Download ZIP** nesta página. O zip traz o `victory.exe`, o
    ```
 
 Requisitos: Windows 10/11 x64, CPU com AVX2, placa Direct3D 12 com Shader Model 6.6 e mesh shaders.
+
+## Versão v6 (27/11)
+
+- Base: VIctory-8GB-v6 (renderiza bem em placas de 8 GB; os shaders de cálculo de 64 lanes sem forma de 32 deixam de ser usados, em vez de travar a placa).
+- Por cima: upscaler e escala de render, slots de descritor, rostos em NVIDIA, modo de pouca RAM, as correções de shader (água e lanes em waves de 32, descritores, permlane16, LDS aproximado), os diagnósticos e os shaders do avatarmanz novo. No dump, só 4 shaders de cálculo ficam de fora (eram 6 na v6 pura).
+- Memória: com `VICTORY_LOW_RAM=1` (já no preset) os blocos ociosos de textura caem de 4 GB para 512 MB. `VICTORY_MEM_LOG=1` grava no log, a cada 30 s, onde está a RAM.
 
 ## O que muda em relação ao avatarmanz 85d5641
 
